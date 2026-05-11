@@ -1,0 +1,36 @@
+{
+  "name": "bounty-triage",
+  "version": "0.1.0",
+  "description": "Discovery and drafting pipeline for funded open-source bounties. Curates a daily review queue; you submit.",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "bounty-triage": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node --enable-source-maps dist/cli.js",
+    "dev": "tsx src/cli.ts",
+    "run:all": "tsx src/cli.ts run",
+    "discover": "tsx src/cli.ts discover",
+    "score": "tsx src/cli.ts score",
+    "draft": "tsx src/cli.ts draft",
+    "report": "tsx src/cli.ts report",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.95.0",
+    "better-sqlite3": "^11.3.0",
+    "undici": "^6.21.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
