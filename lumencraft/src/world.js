@@ -160,7 +160,7 @@ export class World {
   }
 
   processUploads() {
-    let budget = 180000; // quads per frame
+    let budget = 70000; // quads uploaded per frame (~4.5 MB) to avoid hitches
     while (this.uploads.length && budget > 0) {
       const { col, m } = this.uploads.shift();
       if (!this.columns.has(key(col.cx, col.cz))) continue;
@@ -261,10 +261,12 @@ export class World {
   // 128x128 top-surface map around (ox, oz) for weather/particle occlusion.
   buildSurface(ox, oz) {
     const data = new Uint8Array(128 * 128 * 2);
+    let lastK = -1, col = null;
     for (let z = 0; z < 128; z++) {
       for (let x = 0; x < 128; x++) {
         const wx = ox + x, wz = oz + z;
-        const col = this.columns.get(key(wx >> 5, wz >> 5));
+        const k = key(wx >> 5, wz >> 5);
+        if (k !== lastK) { col = this.columns.get(k); lastK = k; }
         const o = (z * 128 + x) * 2;
         if (!col || !col.heights) { data[o] = 0; data[o + 1] = 0; continue; }
         const i = (wz & 31) * CS + (wx & 31);

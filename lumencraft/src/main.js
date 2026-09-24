@@ -229,7 +229,9 @@ function loop(now) {
 
   // --- surface map for weather particles
   const cxr = Math.floor(cam.pos[0]) - 64, czr = Math.floor(cam.pos[2]) - 64;
-  if (!lastSurf || world.surfDirty || Math.abs(cxr - lastSurf[0]) > 12 || Math.abs(czr - lastSurf[1]) > 12) {
+  state.surfTimer = (state.surfTimer ?? 0) - dt;
+  if (!lastSurf || (world.surfDirty && state.surfTimer <= 0) || Math.abs(cxr - lastSurf[0]) > 12 || Math.abs(czr - lastSurf[1]) > 12) {
+    state.surfTimer = 0.5;
     renderer.updateSurface(world.buildSurface(cxr, czr), cxr, czr);
     lastSurf = [cxr, czr];
     world.surfDirty = false;
@@ -414,6 +416,7 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Tab' || e.code === 'F1' || e.code === 'F3' || e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
   if (state.mode !== 'play') {
     if (e.code === 'Escape' && state.mode === 'pause' && !$('palette').hidden) { closePalette(); }
+    if (e.code === 'Enter' && state.mode === 'title') enterWorld();
     return;
   }
   keys.add(e.code);
