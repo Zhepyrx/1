@@ -15,7 +15,7 @@ uniform float uWind;
 out vec3 vRel;
 out vec2 vUV;
 out vec3 vTint;
-out vec3 vLight;
+out vec4 vLight;
 flat out ivec4 vInfo;
 
 vec3 windOffset(vec3 wp, int wave, float topW) {
@@ -59,7 +59,7 @@ void main() {
   vec3 tint = vec3(float((t >> 11u) & 31u) / 31.0, float((t >> 5u) & 63u) / 63.0, float(t & 31u) / 31.0);
   vTint = pow(tint, vec3(2.2));
   uint L = aD.w;
-  vLight = vec3(float(L >> 4u) / 15.0, float(L & 15u) / 15.0, float(aD.z & 3u) / 3.0);
+  vLight = vec4(float(L >> 4u) / 15.0, float(L & 15u) / 15.0, float(aD.z & 3u) / 3.0, float((aD.z >> 2u) & 15u) / 15.0);
   vInfo = ivec4(int(aD.x), nIdx, int(d1 >> 5u), 0);
   vRel = rel;
   vUV = uv;
@@ -86,10 +86,10 @@ export function makeGbufferFS(kind) {
 in vec3 vRel;
 in vec2 vUV;
 in vec3 vTint;
-in vec3 vLight;
+in vec4 vLight;
 flat in ivec4 vInfo;
 uniform sampler2DArray uAlbedo, uNormal, uMaterial;
-uniform vec4 uLayerInfo[64];
+uniform vec4 uLayerInfo[128];
 uniform vec3 uCamPos;
 uniform vec3 uLightDir;
 uniform float uTime, uWetness, uRain;
@@ -185,6 +185,14 @@ void main() {
     }
   }
 #endif
+#if GB_PLANT
+  // campfire flames: licking distortion that rises through the card
+  if ((lf & 32) != 0) {
+    float rise = uTime * 2.3 + vRel.x * 0.7 + vRel.z * 0.5;
+    uv.x += (vnoise2(vec2(uv.y * 5.0 - rise * 1.9, rise * 0.3)) - 0.5) * 0.16 * (1.0 - uv.y * 0.6);
+    uv.y += (vnoise2(vec2(uv.x * 3.0, uv.y * 4.0 - rise * 2.4)) - 0.5) * 0.08;
+  }
+#endif
   vec4 alb = textureGrad(uAlbedo, vec3(uv, lf_), dx, dy);
 #if !GB_OPAQUE
   {
@@ -204,6 +212,9 @@ void main() {
   vec3 albedo = alb.rgb * mix(vec3(1.0), vTint, tintMask);
   vec4 mat = textureGrad(uMaterial, vec3(uv, lf_), dx, dy);
   float rough = mat.r, metal = mat.g, emit = mat.b * li.w, tao = mat.a;
+  // slow bioluminescent breathing, and fire flicker
+  if ((lf & 64) != 0) emit *= 0.72 + 0.28 * sin(uTime * 1.1 + (vRel.x + uCamPos.x) * 0.37 + (vRel.z + uCamPos.z) * 0.29);
+  if ((lf & 32) != 0) emit *= 0.8 + 0.2 * sin(uTime * 17.0 + vRel.x * 3.0) * sin(uTime * 7.3 + 1.1);
 #if GB_PLANT
   vec3 Nm = N;
 #else
@@ -234,8 +245,10 @@ void main() {
 #endif
   }
 #endif
-  int bits = (GB_PLANT == 1 ? 7 : nIdx) + ((lf & 2) != 0 ? 8 : 0) + (GB_PLANT == 1 ? 16 : 0) + ((flags & 4) != 0 ? 32 : 0);
-  oAlb = vec4(albedo, metal);
+  int bits = (GB_PLANT == 1 ? 7 : nIdx) + ((lf & 2) != 0 ? 8 : 0) + (GB_PLANT == 1 ? 16 : 0) + ((flags & 4) != 0 ? 32 : 0)
+    + (int(saturate(metal) * 3.0 + 0.5) << 6);
+  // albedo alpha carries the cool (bioluminescent) block light; metalness lives in the bit field
+  oAlb = vec4(albedo, vLight.w);
   oNrm = vec4(octEncode(Nm), rough, float(bits));
   float ao = pow((vLight.z * 3.0 + 1.0) / 4.0, 0.8) * tao;
   float e = saturate(emit / 16.0);
@@ -264,7 +277,7 @@ export const translucentFS = HEADER + UTIL + FRAME + ATMOS_SAMPLE + CLOUD_SAMPLE
 in vec3 vRel;
 in vec2 vUV;
 in vec3 vTint;
-in vec3 vLight;
+in vec4 vLight;
 flat in ivec4 vInfo;
 uniform sampler2D uSceneColor, uLinDepth, uVol;
 uniform sampler2DArray uAlbedo, uNormal;
@@ -385,9 +398,15 @@ void main() {
     if (texture(uLinDepth, ruv).r < waterZ) ruv = suv;
     vec3 refr = texture(uSceneColor, ruv).rgb;
     float thickR = max(texture(uLinDepth, ruv).r - waterZ, 0.0) * dist / waterZ;
-    vec3 sigma = (WATER_SA + WATER_SS) * (1.0 + uRain * 0.8);
+    // per-biome water: vertex tint carries (murkiness, tropical clarity)
+    vec3 wpar = pow(vTint, vec3(1.0 / 2.2));
+    float murk = wpar.r, trop = wpar.g;
+    vec3 wSA = mix(mix(vec3(0.30, 0.052, 0.028), vec3(0.46, 0.26, 0.42), murk), vec3(0.2, 0.03, 0.024), trop);
+    vec3 wSS = vec3(mix(mix(0.012, 0.06, murk), 0.016, trop));
+    vec3 wCol = mix(mix(vec3(0.015, 0.055, 0.06), vec3(0.03, 0.036, 0.012), murk), vec3(0.018, 0.11, 0.1), trop);
+    vec3 sigma = (wSA + wSS) * (1.0 + uRain * 0.8);
     vec3 amb = irradiance(vec3(0.0, 1.0, 0.0)) / PI * skyVis;
-    vec3 scatterCol = vec3(0.015, 0.055, 0.06) * (amb * 1.3 + uLightColor * max(L.y, 0.0) * nshadow * 0.35);
+    vec3 scatterCol = wCol * (amb * 1.3 + uLightColor * max(L.y, 0.0) * nshadow * 0.35);
     if (!under) {
       vec3 Tw = exp(-sigma * min(thickR, 64.0));
       refr = refr * Tw + scatterCol * (1.0 - Tw);

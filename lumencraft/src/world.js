@@ -28,7 +28,8 @@ export class World {
     this.offsets = null;
     this.offR = -1;
     this.jobId = 1;
-    this.edits = new Set();
+    this.edits = new Map(); // column key -> Map(block index -> id), replayed onto regenerated columns
+    this.fires = new Map();  // campfires (placed by the player) for smoke and sparks: "x,y,z" -> [x, y, z]
     this.stats = { gen: 0, meshed: 0, pending: 0 };
     this.surfDirty = true;
     this.onBlockChanged = null;
@@ -137,7 +138,7 @@ export class World {
     col.meshPending = true;
     col.dirtyEdit = false;
     w.jobs++;
-    w.postMessage({ type: 'mesh', id: this.jobId++, cx: col.cx, cz: col.cz, cols, tintG: col.tintG, tintF: col.tintF, version: col.version, lod: col.wantLod ?? 0 });
+    w.postMessage({ type: 'mesh', id: this.jobId++, cx: col.cx, cz: col.cz, cols, tintG: col.tintG, tintF: col.tintF, tintW: col.tintW, version: col.version, lod: col.wantLod ?? 0 });
   }
 
   onMessage(w, m) {
@@ -146,7 +147,9 @@ export class World {
       const c = m.col;
       const col = this.columns.get(key(c.cx, c.cz));
       if (!col) return;
-      Object.assign(col, { alloc: c.alloc, data: c.data, tintG: c.tintG, tintF: c.tintF, heights: c.heights, biomes: c.biomes, temps: c.temps });
+      Object.assign(col, { alloc: c.alloc, data: c.data, tintG: c.tintG, tintF: c.tintF, tintW: c.tintW, heights: c.heights, biomes: c.biomes, temps: c.temps });
+      this.applyEdits(col);
+      if (this.onColumnReady) this.onColumnReady(col);
       col.state = 'ready';
       col.version = 1;
       this.stats.gen++;
@@ -165,11 +168,20 @@ export class World {
       const { col, m } = this.uploads.shift();
       if (!this.columns.has(key(col.cx, col.cz))) continue;
       if (col.mesh) this.releaseMesh(col);
+      const part = (data, n, groups) => {
+        const allocs = this.pool.upload(data, n);
+        const G = new Int32Array(groups);
+        const gr = [];
+        for (let i = 0; i < G.length; i += 5) {
+          gr.push({ dir: G[i] & 7, minY: G[i + 3] / 16, maxY: G[i + 4] / 16, ranges: this.pool.slice(allocs, G[i + 1], G[i + 2]) });
+        }
+        return { allocs, groups: gr };
+      };
       col.mesh = {
-        opaque: this.pool.upload(m.opaque, m.nOpaque),
-        cutout: this.pool.upload(m.cutout, m.nCutout),
-        trans: this.pool.upload(m.trans, m.nTrans),
-        plants: this.pool.upload(m.plants, m.nPlants),
+        opaque: part(m.opaque, m.nOpaque, m.opaqueG),
+        cutout: part(m.cutout, m.nCutout, m.cutoutG),
+        trans: part(m.trans, m.nTrans, m.transG),
+        plants: part(m.plants, m.nPlants, m.plantsG),
       };
       col.minY = m.minY; col.maxY = m.maxY;
       col.meshVersion = m.version;
@@ -182,10 +194,33 @@ export class World {
 
   releaseMesh(col) {
     const m = col.mesh;
-    this.pool.release(m.opaque); this.pool.release(m.cutout); this.pool.release(m.trans); this.pool.release(m.plants);
+    this.pool.release(m.opaque.allocs); this.pool.release(m.cutout.allocs); this.pool.release(m.trans.allocs); this.pool.release(m.plants.allocs);
     col.mesh = null;
     const i = this.renderList.indexOf(col);
     if (i >= 0) this.renderList.splice(i, 1);
+  }
+
+  // Replay saved edits onto a freshly generated column.
+  applyEdits(col) {
+    const m = this.edits.get(key(col.cx, col.cz));
+    if (!m || !m.size) return;
+    let top = 0;
+    for (const i of m.keys()) top = Math.max(top, i >> 10);
+    if (top >= col.alloc) {
+      const na = Math.min(256, Math.ceil((top + 2) / 16) * 16);
+      const nd = new Uint8Array(na * 1024);
+      nd.set(col.data);
+      col.data = nd; col.alloc = na;
+    }
+    for (const [i, id] of m) {
+      col.data[i] = id;
+      if (id === B.CAMPFIRE) { const x = col.cx * 32 + (i & 31), y = i >> 10, z = col.cz * 32 + ((i >> 5) & 31); this.fires.set(`${x},${y},${z}`, [x, y, z]); }
+    }
+    for (let lz = 0; lz < CS; lz++) for (let lx = 0; lx < CS; lx++) {
+      let yy = col.alloc - 1;
+      while (yy > 0 && col.data[(yy << 10) | (lz << 5) | lx] === 0) yy--;
+      col.heights[lz * CS + lx] = yy;
+    }
   }
 
   // ---------------------------------------------------------------- block access
@@ -211,7 +246,14 @@ export class World {
       col.data = nd; col.alloc = na;
     }
     const lx = x & 31, lz = z & 31;
-    col.data[(y << 10) | (lz << 5) | lx] = id;
+    const bi = (y << 10) | (lz << 5) | lx;
+    if (col.data[bi] === B.CAMPFIRE) this.fires.delete(`${x},${y},${z}`);
+    if (id === B.CAMPFIRE) this.fires.set(`${x},${y},${z}`, [x, y, z]);
+    col.data[bi] = id;
+    let em = this.edits.get(key(cx, cz));
+    if (!em) { em = new Map(); this.edits.set(key(cx, cz), em); }
+    em.set(bi, id);
+    this.editCount = (this.editCount ?? 0) + 1;
     col.version++;
     col.dirtyEdit = true;
     // update top-surface height
@@ -274,10 +316,15 @@ export class World {
         const h = col.heights[i];
         const top = col.data[(h << 10) | ((wz & 31) << 5) | (wx & 31)];
         let flags = 0;
+        const bio = col.biomes ? col.biomes[i] : -1;
         if (top === B.CHERRY_LEAVES) flags |= 2;
+        if (top === B.MAPLE_RED || top === B.MAPLE_ORANGE || top === B.MAPLE_YELLOW || (bio === 13 && top !== B.WATER)) flags |= 1;
         if (col.temps && col.temps[i] < -0.42) flags |= 4;
         if (top === B.WATER) flags |= 8;
-        if (top === B.GRASS || RENDER[top] === R.CROSS || top === B.PINK_PETALS) flags |= 16;
+        if (top === B.GRASS || RENDER[top] === R.CROSS || top === B.PINK_PETALS || top === B.LEAF_LITTER) flags |= 16;
+        if (bio === 18) flags |= 32;
+        if (bio === 19) flags |= 64;
+        if (bio === 14 || bio === 17) flags |= 128;
         data[o] = h; data[o + 1] = flags;
       }
     }
@@ -293,7 +340,7 @@ export class World {
   // Find a scenic spawn: dry, gentle ground in a green biome with water and high ground in view.
   findSpawn() {
     const g = this.gen;
-    const green = new Set([2, 3, 4, 5, 12]);
+    const green = new Set([2, 3, 4, 5, 12, 13, 22]);
     let best = null, bestScore = -1e9;
     for (let r = 0; r <= 1400; r += 40) {
       const n = Math.max(1, Math.round(r / 40) * 6);
@@ -316,7 +363,7 @@ export class World {
           }
         }
         let score = -slope * 2 - r * 0.002 + Math.min(water, 10) * 0.8 + Math.min(high, 10) * 0.7 + variety.size * 0.9;
-        if (s.biome === 5 || s.biome === 12) score += 3;
+        if (s.biome === 5 || s.biome === 12 || s.biome === 13 || s.biome === 22) score += 3;
         if (water > 30) score -= 10;
         if (score > bestScore) { bestScore = score; best = [x + 0.5, Math.floor(s.h) + 1, z + 0.5]; }
       }

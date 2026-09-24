@@ -1,6 +1,6 @@
 // Frame graph: sky LUTs -> shadows -> G-buffer -> AO -> clouds -> volumetrics -> lighting ->
 // translucency -> particles -> temporal upscaling -> exposure -> bloom -> composite.
-import { mat4, frustumPlanes, aabbInFrustum, halton, norm } from './math.js';
+import { mat4, frustumPlanes, aabbInFrustum, aabbFrustumClass, halton, norm } from './math.js';
 import { Program, FS_TRI_VS, tex2D, fbo } from './gl.js';
 import { generateBlockTextures } from './textures.js';
 import { MeshPool } from './meshpool.js';
@@ -10,14 +10,20 @@ import * as CloudS from './shaders/clouds.js';
 import * as TerrS from './shaders/terrain.js';
 import * as PostS from './shaders/post.js';
 import * as MiscS from './shaders/misc.js';
+import * as EntS from './shaders/entity.js';
 
 export const QUALITY = {
   low: { name: 'Low', budget: 0.9e6, shadowRes: 1024, panoW: 1024, cloudSteps: 48, volSteps: 8, pomSteps: 12, pomDist: 12, ssrSteps: 14, texRes: 128, renderDist: 8, pcssCascades: 1 },
   medium: { name: 'Medium', budget: 1.3e6, shadowRes: 1536, panoW: 1024, cloudSteps: 64, volSteps: 10, pomSteps: 18, pomDist: 18, ssrSteps: 18, texRes: 128, renderDist: 10, pcssCascades: 1 },
-  high: { name: 'High', budget: 1.8e6, shadowRes: 2048, panoW: 1536, cloudSteps: 72, volSteps: 12, pomSteps: 24, pomDist: 24, ssrSteps: 22, texRes: 256, renderDist: 12, pcssCascades: 2 },
-  ultra: { name: 'Ultra', budget: 2.4e6, shadowRes: 2048, panoW: 2048, cloudSteps: 84, volSteps: 14, pomSteps: 32, pomDist: 30, ssrSteps: 28, texRes: 256, renderDist: 14, pcssCascades: 2 },
+  high: { name: 'High', budget: 1.8e6, shadowRes: 2048, panoW: 1536, cloudSteps: 72, volSteps: 12, pomSteps: 24, pomDist: 24, ssrSteps: 22, texRes: 256, renderDist: 12, pcssCascades: 2, contact: true },
+  ultra: { name: 'Ultra', budget: 2.4e6, shadowRes: 2048, panoW: 2048, cloudSteps: 84, volSteps: 14, pomSteps: 32, pomDist: 30, ssrSteps: 28, texRes: 256, renderDist: 14, pcssCascades: 2, contact: true },
 };
 
+
+const WATER_DEFAULT = { sa: [0.30, 0.052, 0.028], ss: 0.012 };
+
+// n . L for the six face directions (+X, -X, +Y, -Y, +Z, -Z)
+const FACE_DOT = [(L) => L[0], (L) => -L[0], (L) => L[1], (L) => -L[1], (L) => L[2], (L) => -L[2]];
 
 export class Renderer {
   constructor(canvas) {
@@ -82,9 +88,13 @@ export class Renderer {
       bdown: P(FS_TRI_VS, PostS.bloomDownFS, 'bloomDown'),
       bup: P(FS_TRI_VS, PostS.bloomUpFS, 'bloomUp'),
       comp: P(FS_TRI_VS, PostS.compositeFS, 'composite'),
+      sunVis: P(FS_TRI_VS, PostS.sunVisFS, 'sunVis'),
+      dof: P(FS_TRI_VS, PostS.dofFS, 'dof'),
       outline: P(MiscS.outlineVS, MiscS.outlineFS, 'outline'),
       particles: P(MiscS.particleVS, MiscS.particleFS, 'particles'),
       debris: P(MiscS.debrisVS, MiscS.debrisFS, 'debris'),
+      entity: P(EntS.entityVS, EntS.entityFS, 'entity'),
+      entityShadow: P(EntS.entityShadowVS, EntS.entityShadowFS, 'entityShadow'),
     };
     for (const k in this.progs) { this.progs[k].check(); await tick(); }
 
@@ -158,6 +168,28 @@ export class Renderer {
     gl.vertexAttribPointer(2, 4, gl.FLOAT, false, 32, 16);
     gl.vertexAttribDivisor(2, 1);
     gl.bindVertexArray(null);
+    // creatures: unit cube + per-part instance data
+    this.cubeVBO = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.cubeVBO);
+    gl.bufferData(gl.ARRAY_BUFFER, EntS.unitCube(), gl.STATIC_DRAW);
+    this.entVBO = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.entVBO);
+    gl.bufferData(gl.ARRAY_BUFFER, 2048 * 96, gl.DYNAMIC_DRAW);
+    this.entVAO = gl.createVertexArray();
+    gl.bindVertexArray(this.entVAO);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.cubeVBO);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 16, 0);
+    gl.enableVertexAttribArray(1);
+    gl.vertexAttribPointer(1, 1, gl.FLOAT, false, 16, 12);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.entVBO);
+    for (let k = 0; k < 6; k++) {
+      gl.enableVertexAttribArray(2 + k);
+      gl.vertexAttribPointer(2 + k, 4, gl.FLOAT, false, 96, k * 16);
+      gl.vertexAttribDivisor(2 + k, 1);
+    }
+    gl.bindVertexArray(null);
+    this.entCount = 0; this.entShadowCount = 0;
     // outline box edges
     const e = [];
     const c = [[0, 0, 0], [1, 0, 0], [1, 0, 1], [0, 0, 1], [0, 1, 0], [1, 1, 0], [1, 1, 1], [0, 1, 1]];
@@ -184,6 +216,8 @@ export class Renderer {
     this.lumFBO = fbo(gl, [this.lumTex]);
     this.expTex = [0, 1].map(() => tex2D(gl, 1, 1, gl.R32F, gl.RED, gl.FLOAT, { filter: gl.NEAREST }));
     this.expFBO = this.expTex.map((t) => fbo(gl, [t]));
+    this.visTex = [0, 1].map(() => tex2D(gl, 1, 1, gl.R32F, gl.RED, gl.FLOAT, { filter: gl.NEAREST }));
+    this.visFBO = this.visTex.map((t) => fbo(gl, [t]));
     // surface height map around the player for rain/particle occlusion
     this.surfTex = tex2D(gl, 128, 128, gl.RG8, gl.RG, gl.UNSIGNED_BYTE, { filter: gl.NEAREST });
     this.surfOrigin = [0, 0];
@@ -269,17 +303,22 @@ export class Renderer {
   renderClouds(S, F) {
     const gl = this.gl;
     const size = 8192, texel = size / 512;
+    // cloud shadows drift slowly: refresh the map every other frame (always right after a jump)
     const ox = Math.floor((F.pos[0] - size / 2) / texel) * texel, oz = Math.floor((F.pos[2] - size / 2) / texel) * texel;
-    this.csm = [ox, oz, size, 64];
-    const CS = this.progs.cshadow.use();
-    this.bindCommon(CS, S, F);
-    this.drawFS(this.cloudShadowFBO, 512, 512);
-    gl.bindTexture(gl.TEXTURE_2D, this.cloudShadowTex);
-    gl.generateMipmap(gl.TEXTURE_2D);
+    const moved = !this.csm || Math.abs(ox - this.csm[0]) > texel * 4 || Math.abs(oz - this.csm[1]) > texel * 4;
+    if (moved || (this.frame & 1) === 0) {
+      this.csm = [ox, oz, size, 64];
+      const CS = this.progs.cshadow.use();
+      this.bindCommon(CS, S, F);
+      this.drawFS(this.cloudShadowFBO, 512, 512);
+      gl.bindTexture(gl.TEXTURE_2D, this.cloudShadowTex);
+      gl.generateMipmap(gl.TEXTURE_2D);
+    }
     const pn = this.pano;
     const Pp = this.progs.cpano.use();
     this.bindCommon(Pp, S, F);
-    Pp.f('uPanoRes', pn.w, pn.h).i('uPhase', this.frame % 16).f('uFull', pn.full ? 1 : 0).i('uCloudSteps', this.q.cloudSteps).f('uCirrus', S.cirrus ?? 0.5);
+    const phases = this.cloudPhases ?? (pn.w >= 1536 ? 32 : 16);
+    Pp.f('uPanoRes', pn.w, pn.h).i('uPhase', this.frame % phases).i('uPhases', phases).f('uFull', pn.full ? 1 : 0).i('uCloudSteps', this.q.cloudSteps).f('uCirrus', S.cirrus ?? 0.5);
     this.drawFS(pn.fbo, pn.w, pn.h);
     pn.full = false;
   }
@@ -362,6 +401,9 @@ export class Renderer {
         o.bloom.push(x); o.bloomFBO.push(FO([x])); o.bloomSize.push([bw, bh]);
         bw >>= 1; bh >>= 1;
       }
+      o.dofW = Math.max(4, this.outW >> 1); o.dofH = Math.max(4, this.outH >> 1);
+      o.dof = TO(o.dofW, o.dofH, gl.RGBA16F, gl.RGBA, gl.HALF_FLOAT, {});
+      o.dofFBO = FO([o.dof]);
       o.list = LO;
       this.tgtOut = o;
       this.historyValid = false;
@@ -494,21 +536,44 @@ export class Renderer {
     this.shadowMats = mats;
   }
 
-  visibleChunks(chunks, planes, F, kind, maxDist = Infinity, sorted = false) {
-    const out = [];
+  // Visible draw ranges of one mesh kind. Chunks are culled against the frustum, then their groups
+  // (height sections x face directions) against the frustum and against the viewer: `eye` rejects
+  // opaque faces pointing away from the camera, `light` rejects faces pointing away from the sun
+  // (they would be back-face culled anyway, but skipping them saves the vertex work).
+  visibleChunks(chunks, planes, F, kind, opt = {}) {
+    const maxDist = opt.maxDist ?? Infinity, sorted = !!opt.sorted, eye = !!opt.eye, L = opt.light;
+    const out = [], tmp = this._visTmp || (this._visTmp = []);
+    tmp.length = 0;
     const md2 = maxDist * maxDist;
+    const cy = F.pos[1];
     for (const ch of chunks) {
-      const a = ch.mesh && ch.mesh[kind];
-      if (!a || !a.length) continue;
+      const m = ch.mesh && ch.mesh[kind];
+      if (!m || !m.groups.length) continue;
       const x0 = ch.cx * 32 - F.pos[0], z0 = ch.cz * 32 - F.pos[2];
       const dx = Math.max(x0, 0, -x0 - 32), dz = Math.max(z0, 0, -z0 - 32);
       const d2 = dx * dx + dz * dz;
       if (d2 > md2) continue;
-      if (!aabbInFrustum(planes, x0, ch.minY - F.pos[1] - 1, z0, x0 + 32, ch.maxY - F.pos[1] + 1, z0 + 32)) continue;
-      if (sorted) a.d2 = d2;
-      out.push(a);
+      const cls = aabbFrustumClass(planes, x0, ch.minY - cy - 1, z0, x0 + 32, ch.maxY - cy + 1, z0 + 32);
+      if (!cls) continue;
+      let lists = null;
+      for (const g of m.groups) {
+        const d = g.dir;
+        if (d < 6) {
+          if (eye) {
+            if ((d === 0 && x0 >= 0) || (d === 1 && x0 + 32 <= 0) || (d === 4 && z0 >= 0) || (d === 5 && z0 + 32 <= 0) ||
+                (d === 2 && g.minY >= cy) || (d === 3 && g.maxY <= cy)) continue;
+          }
+          if (L && FACE_DOT[d](L) <= 0.0) continue;
+        }
+        if (cls === 1 && !aabbInFrustum(planes, x0, g.minY - cy - 0.5, z0, x0 + 32, g.maxY - cy + 0.5, z0 + 32)) continue;
+        if (sorted) { if (!lists) lists = []; lists.push(g.ranges); } else out.push(g.ranges);
+      }
+      if (sorted && lists) tmp.push({ d2, lists });
     }
-    if (sorted) out.sort((p, q) => p.d2 - q.d2);
+    if (sorted) {
+      tmp.sort((p, q) => p.d2 - q.d2);
+      for (const t of tmp) for (const l of t.lists) out.push(l);
+    }
     return out;
   }
 
@@ -525,8 +590,12 @@ export class Renderer {
     p.f('uNight', env.night).f('uCamAltKm', env.altKm).f('uRenderDist', S.renderDist * 32);
     p.f('uSunIllum', env.sunIllum * (1 - w.rain * 0.55)).f('uMoonIllum', env.moonIllum * (1 - w.rain * 0.6));
     p.f('uHaze', S.fog.haze).f('uMist', S.fog.mist).f('uMistY', S.fog.mistY).f('uRain', w.rain).f('uWetness', w.wetness);
+    const ft = S.fog.tint ?? [1, 1, 1];
+    p.f('uFogTint', ft[0], ft[1], ft[2]);
     p.f('uUnderwater', S.underwater ? 1 : 0);
-    p.f('uAurora', S.aurora).f('uCirrus', S.cirrus ?? 0.5);
+    const wa = S.water ?? WATER_DEFAULT;
+    p.f('uWaterSA', wa.sa[0], wa.sa[1], wa.sa[2]).f('uWaterSS', wa.ss, wa.ss, wa.ss);
+    p.f('uAurora', S.aurora).f('uCirrus', S.cirrus ?? 0.5).f('uRainbow', S.rainbow ?? 0);
     if (p.u.uStarRot) gl.uniformMatrix3fv(p.u.uStarRot, false, env.starRot);
     p.f('uCloudBottom', 650).f('uCloudTop', 1500).f('uCloudCoverage', w.coverage).f('uCloudDensity', 1.0 + w.rain * 0.6);
     p.f('uWindOffset', S.time * 6.5, S.time * 0.6, S.time * 2.8);
@@ -605,6 +674,14 @@ export class Renderer {
     this.stats.calls = 0; this.stats.tris = 0;
     const acc = (r) => { this.stats.calls += r.calls; this.stats.tris += r.tris; };
 
+    // creature instances for this frame
+    this.entCount = 0; this.entShadowCount = 0;
+    if (S.creatures && S.creatures.count) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.entVBO);
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, S.creatures.data, 0, S.creatures.count * 24);
+      this.entCount = S.creatures.count; this.entShadowCount = S.creatures.shadowCount;
+    }
+
     // ---- sky
     this.prof('sky');
     gl.bindVertexArray(this.emptyVAO);
@@ -652,12 +729,18 @@ export class Renderer {
       const m32 = new Float32Array(J.mat);
       gl.enable(gl.CULL_FACE); gl.cullFace(gl.BACK);
       P.shadowO.use().m4('uVP', m32);
-      acc(this.pool.draw(this.visibleChunks(chunks, planes, F, 'opaque')));
+      acc(this.pool.draw(this.visibleChunks(chunks, planes, F, 'opaque', { light: env.lightDir })));
       gl.disable(gl.CULL_FACE);
       P.shadowC.use().m4('uVP', m32).tex('uAlbedo', this.blockTex.albedo, gl.TEXTURE_2D_ARRAY);
       acc(this.pool.draw(this.visibleChunks(chunks, planes, F, 'cutout')));
-      // grass and flowers only matter in the near cascades
-      if (J.c < 2) acc(this.pool.draw(this.visibleChunks(chunks, planes, F, 'plants', J.far + 8)));
+      // grass, flowers and creatures only matter in the near cascades
+      if (J.c < 2) acc(this.pool.draw(this.visibleChunks(chunks, planes, F, 'plants', { maxDist: J.far + 8 })));
+      if (J.c < 2 && this.entShadowCount) {
+        P.entityShadow.use().m4('uVP', m32);
+        gl.bindVertexArray(this.entVAO);
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, this.entShadowCount);
+        gl.bindVertexArray(null);
+      }
     }
     gl.disable(gl.SCISSOR_TEST);
     gl.disable(gl.POLYGON_OFFSET_FILL);
@@ -682,12 +765,21 @@ export class Renderer {
     // opaque terrain front-to-back so depth rejection skips hidden fragments
     gl.enable(gl.CULL_FACE); gl.cullFace(gl.BACK);
     useG(P.gbufO);
-    acc(this.pool.draw(this.visibleChunks(chunks, F.planes, F, 'opaque', Infinity, true), false));
+    acc(this.pool.draw(this.visibleChunks(chunks, F.planes, F, 'opaque', { sorted: true, eye: true }), false));
     gl.disable(gl.CULL_FACE);
     useG(P.gbufC);
-    acc(this.pool.draw(this.visibleChunks(chunks, F.planes, F, 'cutout', Infinity, true), false));
+    acc(this.pool.draw(this.visibleChunks(chunks, F.planes, F, 'cutout', { sorted: true }), false));
     useG(P.gbufP);
-    acc(this.pool.draw(this.visibleChunks(chunks, F.planes, F, 'plants', S.plantFade + 32, true), false));
+    acc(this.pool.draw(this.visibleChunks(chunks, F.planes, F, 'plants', { maxDist: S.plantFade + 32, sorted: true }), false));
+    if (this.entCount) {
+      gl.enable(gl.CULL_FACE); gl.cullFace(gl.BACK);
+      P.entity.use().m4('uVP', F.vp32).f('uTime', S.time).i('uFrame', this.frame);
+      gl.bindVertexArray(this.entVAO);
+      gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, this.entCount);
+      gl.bindVertexArray(null);
+      gl.disable(gl.CULL_FACE);
+      this.stats.calls++; this.stats.tris += this.entCount * 12;
+    }
     gl.disable(gl.DEPTH_TEST);
 
     // ---- AO
@@ -714,18 +806,19 @@ export class Renderer {
     this.bindCommon(Li, S, F);
     Li.tex('uG0', t.gAlb).tex('uG1', t.gNrm).tex('uG2', t.gMisc).tex('uDepth', t.gDepth).tex('uAO', t.ao)
       .tex('uVol', t.vol).tex('uHistory', o.hist[1 - hi]);
-    Li.i('uDebug', S.debug | 0).f('uSSR', 1).f('uSSRSteps', q.ssrSteps).f('uVolMax', volMax).f('uFlicker', S.flicker).f('uHasHistory', this.historyValid ? 1 : 0);
+    Li.i('uDebug', S.debug | 0).f('uSSR', 1).f('uSSRSteps', q.ssrSteps).f('uVolMax', volMax).f('uFlicker', S.flicker).f('uHasHistory', this.historyValid ? 1 : 0)
+      .f('uContact', q.contact ? 1 : 0);
     this.drawFS(t.lightFBO, this.inW, this.inH);
 
     // ---- translucent (water, glass, ice)
     this.prof('water');
     const transList = [];
     for (const ch of chunks) {
-      const a = ch.mesh && ch.mesh.trans;
-      if (!a || !a.length) continue;
+      const m = ch.mesh && ch.mesh.trans;
+      if (!m || !m.allocs.length) continue;
       const x0 = ch.cx * 32 - F.pos[0], z0 = ch.cz * 32 - F.pos[2];
       if (!aabbInFrustum(F.planes, x0, ch.minY - F.pos[1] - 1, z0, x0 + 32, ch.maxY - F.pos[1] + 1, z0 + 32)) continue;
-      transList.push({ a, d: (x0 + 16) ** 2 + (z0 + 16) ** 2 });
+      transList.push({ a: m.allocs, d: (x0 + 16) ** 2 + (z0 + 16) ** 2 });
     }
     if (transList.length) {
       transList.sort((x, y) => y.d - x.d);
@@ -793,9 +886,22 @@ export class Renderer {
     }
     gl.disable(gl.BLEND);
 
+    // ---- lens flare visibility and depth of field
+    const flare = this.sunFlare(S, F);
+    const dofOn = !!(S.dof && S.dof.on);
+    if (dofOn) {
+      this.prof('dof');
+      P.dof.use().tex('uSrc', taaOut).tex('uDepth', t.gDepth).f('uDstRes', o.dofW, o.dofH).f('uFocus', Math.max(0.5, S.dof.focus))
+        .f('uAperture', S.dof.aperture).f('uNear', F.near).f('uFar', F.far).f('uMaxCoC', S.dof.maxCoC ?? 12);
+      this.drawFS(o.dofFBO, o.dofW, o.dofH);
+    }
+
     // ---- composite to screen
     this.prof('composite');
     const Co = P.comp.use();
+    Co.tex('uSunVis', this.visTex[flare.vi]).f('uSunUV', flare.uv[0], flare.uv[1]).f('uFlare', flare.strength)
+      .f('uFlareCol', flare.col[0], flare.col[1], flare.col[2])
+      .tex('uDof', o.dof).f('uDofOn', dofOn ? 1 : 0).f('uLetterbox', S.post.letterbox ?? 0).f('uChroma', S.post.chroma ?? 0);
     Co.tex('uSrc', taaOut).tex('uBloom', o.bloom[0]).tex('uExposure', this.expTex[ei]).tex('uDepth', t.gDepth)
       .m4('uInvVP', F.invVP32).m4('uPrevVP', F.prevVP32).f('uMotionBlur', this.historyValid ? S.post.motionBlur : 0)
       .f('uOutRes', this.outW, this.outH).f('uBloomStr', S.post.bloom / nb).f('uSharpen', S.post.sharpen)
@@ -814,6 +920,35 @@ export class Renderer {
     this.frame++;
   }
 
+  // Project the sun, measure how much of it is visible and return the flare parameters.
+  sunFlare(S, F) {
+    const env = S.env;
+    const d = env.sunDir;
+    const m = F.vpNJ;
+    const cx = m[0] * d[0] + m[4] * d[1] + m[8] * d[2], cy = m[1] * d[0] + m[5] * d[1] + m[9] * d[2], cw = m[3] * d[0] + m[7] * d[1] + m[11] * d[2];
+    const vi = this.frame & 1;
+    let strength = 0, uv = [0.5, 0.5];
+    if (cw > 0.05) {
+      uv = [cx / cw * 0.5 + 0.5, cy / cw * 0.5 + 0.5];
+      const up = Math.min(1, Math.max(0, (d[1] + 0.02) / 0.08));
+      strength = (S.post.flare ?? 0) * up * (1 - S.weather.rain) * (1 - (S.underwater ? 1 : 0));
+    }
+    if (strength > 0 || this.visWasOn) {
+      const gl = this.gl;
+      const V = this.progs.sunVis.use();
+      this.bindCommon(V, S, F);
+      const r = 0.0085 * 2.2 / Math.tan(S.cam.fov / 2) * 0.5;
+      V.tex('uDepth', this.tgt.gDepth).tex('uPrevVis', this.visTex[1 - vi]).f('uSunUV', uv[0], uv[1]).f('uSunRad', r / F.aspect, r)
+        .f('uDt', S.dt).f('uReset', this.historyValid ? 0 : 1);
+      if (strength <= 0) V.f('uSunUV', -5, -5);
+      this.drawFS(this.visFBO[vi], 1, 1);
+      void gl;
+    }
+    this.visWasOn = strength > 0;
+    const lc = env.lightColor, mx = Math.max(lc[0], lc[1], lc[2], 1e-4);
+    return { vi, uv, strength: env.useSun ? strength : 0, col: [lc[0] / mx, lc[1] / mx, lc[2] / mx] };
+  }
+
   renderParticles(S, F) {
     const gl = this.gl;
     const t = this.tgt;
@@ -827,6 +962,10 @@ export class Renderer {
     const Pa = P.particles.use();
     this.bindCommon(Pa, S, F);
     Pa.m4('uVP', F.vp32).tex('uSurf', this.surfTex).f('uSurfOrigin', this.surfOrigin[0], this.surfOrigin[1]);
+    const em = S.emitters ?? [];
+    const emv = new Float32Array(16);
+    em.slice(0, 4).forEach((e, i) => emv.set([e[0], e[1], e[2], 1], i * 4));
+    Pa.fv('uEmit', emv, 4).i('uEmitCount', Math.min(4, em.length)).f('uWindSmoke', S.wind ?? 1);
     gl.bindVertexArray(this.partVAO);
     for (const sys of S.particles) {
       if (sys.count <= 0) continue;

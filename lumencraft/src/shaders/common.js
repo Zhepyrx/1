@@ -37,8 +37,7 @@ vec2 octEncode(vec3 n) { n /= (abs(n.x) + abs(n.y) + abs(n.z)); vec2 e = n.xy; i
 vec3 octDecode(vec2 e) { vec3 n = vec3(e, 1.0 - abs(e.x) - abs(e.y)); float t = max(-n.z, 0.0); n.xy += vec2(n.x >= 0.0 ? -t : t, n.y >= 0.0 ? -t : t); return normalize(n); }
 float remap(float v, float l0, float h0, float l1, float h1) { return l1 + (v - l0) * (h1 - l1) / (h0 - l0); }
 float hgPhase(float c, float g) { float g2 = g * g; return (1.0 - g2) / (4.0 * PI * pow(max(1.0 + g2 - 2.0 * g * c, 1e-4), 1.5)); }
-const vec3 WATER_SA = vec3(0.30, 0.052, 0.028);
-const vec3 WATER_SS = vec3(0.012);
+const vec3 COOL_LIGHT = vec3(0.2, 0.7, 1.0);
 vec2 vogel(int i, int n, float phi) { float r = sqrt((float(i) + 0.5) / float(n)); float th = float(i) * 2.39996323 + phi; return r * vec2(cos(th), sin(th)); }
 `;
 
@@ -58,6 +57,9 @@ uniform float uCamAltKm;
 uniform float uRenderDist;
 uniform float uHaze, uMist, uMistY, uRain, uWetness;
 uniform float uUnderwater;
+uniform vec3 uWaterSA, uWaterSS;
+#define WATER_SA uWaterSA
+#define WATER_SS uWaterSS
 float linearDepth(float d) { return uNear * uFar / (uFar - d * (uFar - uNear)); }
 vec3 relFromDepth(vec2 uv, float d) { vec4 p = uInvVP * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0); return p.xyz / p.w; }
 vec3 viewRay(vec2 uv) { vec4 p = uInvVP * vec4(uv * 2.0 - 1.0, 1.0, 1.0); return normalize(p.xyz / p.w); }
@@ -196,15 +198,55 @@ vec3 starPoints(vec3 d) {
   }
   return col * 0.2;
 }
+uniform float uRainbow;
+vec3 hue(float h) { return saturate(abs(fract(h + vec3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0); }
+// Primary (42 deg, red outside) and secondary (51 deg, reversed) bows around the antisolar point,
+// with the brighter sky inside the primary and Alexander's dark band between the two.
+vec3 rainbow(vec3 d, vec3 sky) {
+  if (uRainbow <= 0.001 || d.y < -0.01) return vec3(0.0);
+  float ang = degrees(acos(clamp(dot(d, -uSunDir), -1.0, 1.0)));
+  float p = (ang - 40.3) / 2.5, q = (53.4 - ang) / 3.4;
+  vec3 col = hue((1.0 - p) * 0.78) * smoothstep(0.0, 0.18, p) * smoothstep(1.0, 0.8, p);
+  col += hue((1.0 - q) * 0.78) * smoothstep(0.0, 0.18, q) * smoothstep(1.0, 0.8, q) * 0.38;
+  float inside = smoothstep(40.5, 24.0, ang) * smoothstep(8.0, 20.0, ang) * 0.14;
+  float band = smoothstep(42.5, 44.0, ang) * smoothstep(50.5, 49.0, ang) * 0.1;
+  return (col * 0.55 + inside - band) * luma(sky) * uRainbow * smoothstep(-0.01, 0.06, d.y);
+}
+// A couple of meteors per minute: a short bright streak with a fading tail.
+vec3 meteors(vec3 d) {
+  vec3 acc = vec3(0.0);
+  for (int i = 0; i < 2; i++) {
+    float period = 11.0 + float(i) * 6.0;
+    float tt = uTime / period + float(i) * 0.37;
+    float id = floor(tt), ph = fract(tt);
+    const float dur = 0.07;
+    if (ph > dur) continue;
+    vec3 h = hash33(vec3(id, float(i), 7.0));
+    vec3 start = normalize(vec3(h.x * 2.0 - 1.0, 0.4 + h.y * 0.55, h.z * 2.0 - 1.0));
+    vec3 axis = normalize(cross(start, normalize(vec3(h.z - 0.5, -0.6, h.x - 0.5))));
+    float k = ph / dur;
+    float a = k * 0.3;
+    vec3 head = start * cos(a) + cross(axis, start) * sin(a) + axis * dot(axis, start) * (1.0 - cos(a));
+    vec3 dir = normalize(cross(axis, head));
+    vec3 rel = d - head;
+    float along = -dot(rel, dir);
+    if (along < 0.0 || along > 0.1) continue;
+    float across = length(rel + dir * along);
+    float I = exp(-across * across / 1.6e-6) * (1.0 - along / 0.1) * sin(k * 3.14159);
+    acc += vec3(0.85, 0.92, 1.0) * I * 0.9;
+  }
+  return acc;
+}
 vec3 skyFull(vec3 d, bool withDiscs) {
   vec3 c = skyLUT(d);
   if (withDiscs) {
     float night = uNight;
     if (night > 0.0 && d.y > 0.0) {
       vec3 T = transmittance(uCamAltKm, max(d.y, 0.02));
-      c += (starPoints(d) + skyExtraAt(d)) * night * T;
+      c += (starPoints(d) + skyExtraAt(d) + meteors(d)) * night * T;
     }
     c += sunDisc(d) + moonDisc(d) * night;
+    c += rainbow(d, c);
   }
   return c;
 }
@@ -343,6 +385,7 @@ float cloudField(vec3 p, float hf, bool detail) {
 // Exponential height fog / valley mist.
 export const FOG = /* glsl */`
 uniform sampler3D uFogNoise;
+uniform vec3 uFogTint;
 float fogDensity(vec3 wp) {
   float h = wp.y;
   float d = uHaze * exp(-max(h - 60.0, 0.0) / 140.0);

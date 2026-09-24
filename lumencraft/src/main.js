@@ -4,8 +4,11 @@ import { World } from './world.js';
 import { Player } from './player.js';
 import { Audio } from './audio.js';
 import { computeEnvironment, Weather } from './environment.js';
-import { B, INFO, RENDER, R, SOLID, TEX_TOP, TEX_SIDE, TINT, HOTBAR_DEFAULT, PALETTE, EMIT } from './blocks.js';
+import { B, INFO, RENDER, R, SOLID, TEX_TOP, TEX_SIDE, TINT, HOTBAR_DEFAULT, PALETTE, PALETTE_CATS, EMIT, EMIT_COOL } from './blocks.js';
 import { BIOME_NAMES, SEA } from './worldgen.js';
+import { Creatures, SPECIES } from './creatures.js';
+import { MapView } from './mapview.js';
+import { loadSave, writeSave, clearSave, packEdits, unpackEdits, timeAgo } from './save.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -15,6 +18,7 @@ const TEST = params.has('test');
 const DEFAULTS = {
   quality: 'high', dynamicRes: true, targetFps: 60, renderScale: 0.84, renderDist: 12, fov: 74, sensitivity: 1,
   volume: 0.7, viewBob: true, dayCycle: true, dayMinutes: 24, weather: 'auto', grain: true, sharpen: 0.55, motionBlur: true, gi: true,
+  creatures: true, lensFlare: true, cinematic: false,
   hotbar: HOTBAR_DEFAULT.slice(),
 };
 function loadSettings() {
@@ -40,7 +44,7 @@ function createWorker() {
 
 // ------------------------------------------------------------------ state
 const canvas = $('gl');
-let renderer, world, player, audio, weather;
+let renderer, world, player, audio, weather, creatures;
 const state = {
   mode: 'boot', // boot | title | play | pause
   hours: +(params.get('time') ?? 7.25),
@@ -58,10 +62,22 @@ const state = {
   lastSpace: 0,
   cine: 0,
   evComp: 0,
+  photo: null,
+  home: null,
+  journal: { biomes: new Set(), creatures: new Set() },
+  undo: [], redo: [],
+  biomeCur: -1, biomeCand: -1, biomeTimer: 0,
+  focus: 10,
+  capture: false,
+  saveTimer: 0,
+  settle: false,
 };
 const keys = new Set();
 const debris = { data: new Float32Array(256 * 8), count: 0, list: [] };
 let seed = +(params.get('seed') ?? 20260924);
+let saved = TEST ? null : loadSave();
+if (saved && !params.has('seed')) seed = saved.seed;
+let mapView = null;
 let lastSurf = null;
 let spawn = [0, 90, 0];
 
@@ -91,24 +107,45 @@ async function boot() {
   audio.setVolume(settings.volume);
   weather = new Weather();
   applyWeatherSetting();
-  startWorld(seed);
+  mapView = new MapView(createWorker);
+  mapView.onTravel = (x, z) => { travelTo(x, z); resume(); };
+  mapView.onClose = () => {
+    if (state.mode !== 'pause' || !$('pause').hidden || !$('palette').hidden) return;
+    // Esc can't re-grab the pointer, so it lands on the pause menu; Tab or Close go straight back in
+    if (state.mapToPause) { state.mapToPause = false; $('pause').hidden = false; showPanel('main'); } else resume();
+  };
+  startWorld(seed, saved);
   buildHotbar();
   buildPalette();
   bindUI();
   requestAnimationFrame(loop);
 }
 
-function startWorld(s) {
+function startWorld(s, save = null) {
   if (world) world.destroy();
   seed = s;
   world = new World(seed, renderer.pool, createWorker);
   world.renderDist = settings.renderDist;
-  spawn = params.has('pos') ? params.get('pos').split(',').map(Number) : world.findSpawn();
+  if (save) world.edits = unpackEdits(save.edits);
+  const origin = save?.home ?? world.findSpawn();
+  spawn = params.has('pos') ? params.get('pos').split(',').map(Number) : save?.pos ? save.pos.slice() : origin;
+  state.home = origin.slice();
+  state.restored = !!save?.pos;
   player = new Player(world, spawn);
-  player.yaw = +(params.get('yaw') ?? 0.6);
-  player.pitch = +(params.get('pitch') ?? -0.05);
+  player.yaw = +(params.get('yaw') ?? save?.yaw ?? 0.6);
+  player.pitch = +(params.get('pitch') ?? save?.pitch ?? -0.05);
+  if (save) { state.hours = save.hours ?? state.hours; state.day = save.day ?? state.day; }
+  state.journal = { biomes: new Set(save?.journal?.biomes ?? []), creatures: new Set(save?.journal?.creatures ?? []) };
+  state.undo = []; state.redo = [];
+  state.biomeCur = -1; state.biomeCand = -1;
+  if (mapView) { mapView.setSeed(seed); mapView.discovered = state.journal.biomes; }
   player.onStep = (id, sprint) => audio.hit(INFO[id]?.sound ?? 'stone', 'step', sprint ? 1.2 : 1);
   world.onBlockChanged = () => { lastSurf = null; };
+  if (!creatures) creatures = new Creatures(world);
+  creatures.world = world;
+  creatures.clear();
+  creatures.seen = state.journal.creatures;
+  creatures.onSpotted = (key) => { toast(`Wildlife spotted: ${SPECIES[key].name}`); state.dirty = true; };
   renderer.historyValid = false;
   lastSurf = null;
 }
@@ -166,7 +203,7 @@ function loop(now) {
         // settle the player on the ground
         let y = 200;
         while (y > 1 && !world.isSolid(Math.floor(spawn[0]), y - 1, Math.floor(spawn[2]))) y--;
-        if (!params.has('pos')) player.pos[1] = y;
+        if (!params.has('pos') && !state.restored) player.pos[1] = y;
         state.mode = TEST && !params.has('title') ? 'play' : 'title';
         $('boot').classList.add('done');
         if (TEST) { $('boot').hidden = true; $('hud').hidden = params.get('hud') !== '1' || state.mode === 'title'; }
@@ -179,7 +216,7 @@ function loop(now) {
 
   // --- time & weather
   const env0Night = computeEnvironment(state.hours, state.day, player.pos[1]).night;
-  if (settings.dayCycle && state.mode !== 'pause' && !TEST) {
+  if (settings.dayCycle && state.mode !== 'pause' && state.mode !== 'photo' && !TEST) {
     state.hours += dt * 24 / (settings.dayMinutes * 60);
   }
   if (keys.has('BracketRight')) state.hours += dt * 1.5;
@@ -204,7 +241,10 @@ function loop(now) {
     const pitch = Math.atan2(ly, Math.hypot(lx, lz));
     cam = { pos: [cx, cy, cz], yaw, pitch, fov: 62 * Math.PI / 180 };
     world.update(cx, cz, Math.sin(yaw), -Math.cos(yaw));
+  } else if (state.mode === 'photo') {
+    cam = updatePhotoCamera(dt);
   } else {
+    if (state.settle) settleAfterTravel();
     const input = {
       forward: keys.has('KeyW') || keys.has('ArrowUp'), back: keys.has('KeyS') || keys.has('ArrowDown'),
       left: keys.has('KeyA') || keys.has('ArrowLeft'), right: keys.has('KeyD') || keys.has('ArrowRight'),
@@ -246,10 +286,27 @@ function loop(now) {
   const h = state.hours;
   const morning = Math.exp(-Math.pow((h - 6.6) / 1.5, 2));
   const evening = Math.exp(-Math.pow((h - 19.5) / 1.4, 2)) * 0.35;
+  const amb = updateAmbience(dt, cam.pos);
+  if (state.mode === 'play') { updateBiomeCard(dt); autosave(dt); }
+  const photo = state.mode === 'photo';
+  const cine = settings.cinematic && state.mode === 'play';
+  if (photo || cine) {
+    const cp = Math.cos(cam.pitch);
+    const fw = [Math.sin(cam.yaw) * cp, Math.sin(cam.pitch), -Math.cos(cam.yaw) * cp];
+    const hit = world.raycast(cam.pos, fw, 300);
+    const target = photo && !state.photo.autoFocus ? state.photo.focus : (hit ? Math.max(0.6, hit.t) : 300);
+    state.focus += (target - state.focus) * (1 - Math.exp(-dt * 6));
+    if (photo) state.photo.focusNow = state.focus;
+  }
+  // wildlife
+  creatures.enabled = settings.creatures && !params.has('nocreatures');
+  if (state.mode === 'play' || state.mode === 'title') creatures.update(TEST ? 1 / 60 : dt, state.mode === 'title' ? { pos: cam.pos, vel: [0, 0, 0] } : player, env, weather.rain);
   const fog = {
-    haze: 0.0009 + weather.rain * 0.0025,
-    mist: (0.018 * morning + 0.004 * evening + 0.0025 * env.night) * (1 - weather.rain * 0.5),
-    mistY: SEA + 7,
+    haze: 0.0009 + weather.rain * 0.0025 + amb.volcanic * 0.0022 + amb.jungle * 0.0009 + amb.swamp * 0.0008,
+    mist: (0.018 * morning + 0.004 * evening + 0.0025 * env.night) * (1 - weather.rain * 0.5)
+      + amb.swamp * (0.012 + 0.01 * morning) + amb.lumen * (0.003 + 0.008 * env.night) + amb.jungle * 0.006 * morning,
+    mistY: SEA + 7 + amb.volcanic * 20,
+    tint: [1 - 0.1 * amb.lumen * env.night + 0.08 * amb.volcanic, 1 - 0.05 * amb.volcanic, 1 + 0.12 * amb.lumen * env.night - 0.12 * amb.volcanic],
   };
   const dayF = 1 - env.night;
   const noRain = 1 - weather.rain;
@@ -257,14 +314,33 @@ function loop(now) {
     { kind: 0, count: Math.round(12000 * weather.rain), intensity: 1, additive: false },
     { kind: 5, count: Math.round(1500 * weather.rain), intensity: 1, additive: false },
     { kind: 1, count: Math.round(4000 * weather.rain), intensity: 1, additive: false },
-    { kind: 2, count: Math.round(260 * env.night * noRain), intensity: 1, additive: true },
+    { kind: 2, count: Math.round((260 + 260 * amb.jungle) * env.night * noRain), intensity: 1, additive: true },
     { kind: 3, count: Math.round(500 * dayF * noRain), intensity: 1, additive: true },
     { kind: 4, count: 320, intensity: 1, additive: false },
+    { kind: 6, count: Math.round(420 * amb.autumn), intensity: 1, additive: false },
+    { kind: 7, count: Math.round(700 * amb.lumen * noRain), intensity: 1, additive: true },
+    { kind: 8, count: Math.round(1400 * amb.volcanic), intensity: 1, additive: false },
+    { kind: 9, count: Math.round(260 * amb.volcanic), intensity: 1, additive: true },
   ];
+  // campfires near the camera send up smoke and sparks
+  const emitters = [];
+  for (const f of world.fires.values()) {
+    const d = Math.hypot(f[0] - cam.pos[0], f[1] - cam.pos[1], f[2] - cam.pos[2]);
+    if (d < 64) emitters.push([f[0], f[1], f[2], d]);
+  }
+  emitters.sort((a, b) => a[3] - b[3]);
+  if (emitters.length) {
+    const n = Math.min(4, emitters.length);
+    particles.push({ kind: 10, count: 90 * n, intensity: 1, additive: false }, { kind: 11, count: 24 * n, intensity: 1, additive: true });
+  }
   const flickerT = state.time;
   const flicker = 1 + 0.05 * Math.sin(flickerT * 11.3) * Math.sin(flickerT * 7.1 + 1.3) + 0.03 * Math.sin(flickerT * 23.7);
   const aurora = env.night * (0.35 + 0.65 * (0.5 + 0.5 * Math.sin(state.day * 1.7 + 0.4)));
   const cirrus = (0.35 + 0.45 * (0.5 + 0.5 * Math.sin(state.day * 2.3 + 1.1))) * (1 - weather.rain);
+  // rainbows while the land is still wet after a shower, with the sun low enough for the bow to clear the horizon
+  const sss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  const rainbow = params.has('rainbow') ? 1 : sss(0.12, 0.35, weather.wetness) * (1 - sss(0.25, 0.55, weather.rain)) *
+    sss(0.02, 0.1, env.sunDir[1]) * (1 - sss(0.55, 0.72, env.sunDir[1]));
 
   // --- dynamic resolution
   dynTimer += dt;
@@ -289,16 +365,23 @@ function loop(now) {
   }
 
   const S = {
-    cam, env, weather, time: state.time, dt, renderDist: settings.renderDist, chunks: world.renderList,
-    wind: 1 + weather.rain * 1.2, flicker, fog, underwater, aurora, cirrus,
-    post: { bloom: 0.09, sharpen: settings.sharpen, vignette: 0.22, grain: settings.grain ? 0.035 : 0, saturation: 1.08, contrast: 1.0, motionBlur: settings.motionBlur && !TEST ? 0.45 : 0 },
+    cam, env, weather, time: state.time, dt, renderDist: settings.renderDist, chunks: world.renderList, water: amb.water, emitters,
+    wind: 1 + weather.rain * 1.2, flicker, fog, underwater, aurora, cirrus, rainbow,
+    post: {
+      bloom: 0.09, sharpen: settings.sharpen, vignette: photo || cine ? 0.3 : 0.22, grain: settings.grain ? 0.035 : 0, saturation: 1.08, contrast: 1.0,
+      motionBlur: settings.motionBlur && !TEST && !photo ? 0.45 : 0, flare: settings.lensFlare ? 1 : 0,
+      letterbox: photo ? (state.photo.letterbox ? 1 : 0) : cine ? 1 : 0, chroma: photo || cine ? 1 : 0,
+    },
+    dof: { on: photo ? state.photo.aperture > 0.001 : cine, focus: state.focus, aperture: photo ? state.photo.aperture : 0.045, maxCoC: photo ? 16 : 8 },
     gi: settings.gi ? 1.0 : 0,
     evComp: state.evComp + (underwater ? 0.3 : 0), particles, debris, selection: state.hudHidden ? null : state.selection,
+    creatures: buildCreatures(cam),
     debug: +(params.get('dbg') ?? 0),
     plantFade: world.detailRadius * 32,
   };
   renderer.profiling = state.perf || params.has('profile');
   renderer.render(S);
+  if (state.capture) { state.capture = false; captureScreenshot(); }
   state.gpuMs = renderer.gpuMs;
   state.cpuMs += (performance.now() - frameStart - state.cpuMs) * 0.1;
 
@@ -313,9 +396,17 @@ function loop(now) {
       if (b === B.WATER) nearWater += 1 / 6;
     }
     const biome = world.biomeAt(ex, ez);
+    state.fireT = (state.fireT ?? 0) - dt;
+    if (state.fireT <= 0) {
+      state.fireT = 0.5;
+      state.fireNear = 0;
+      for (let dz = -5; dz <= 5 && !state.fireNear; dz++) for (let dx = -5; dx <= 5 && !state.fireNear; dx++) for (let dy = -2; dy <= 2; dy++) {
+        if (world.getBlock(ex + dx, Math.floor(cam.pos[1]) + dy, ez + dz) === B.CAMPFIRE) { state.fireNear = 1 / (1 + Math.hypot(dx, dz) * 0.4); break; }
+      }
+    }
     audio.update(dt, {
-      altitude: cam.pos[1], rain: weather.rain, underwater, flying: player.flying, day: dayF, sheltered, nearWater,
-      trees: biome === 3 || biome === 4 || biome === 5 || biome === 6 || biome === 2 || biome === 12, thunder: weather.thunder > 0,
+      altitude: cam.pos[1], rain: weather.rain, underwater, flying: player.flying, day: dayF, sheltered, nearWater, amb, fire: state.fireNear,
+      trees: [2, 3, 4, 5, 6, 12, 13, 14, 15, 17, 22].includes(biome), thunder: weather.thunder > 0,
     });
     weather.thunder = 0;
   }
@@ -328,6 +419,283 @@ function loop(now) {
   }
 }
 
+// ------------------------------------------------------------------ biome ambience
+// Weights of the biomes around the camera, eased over a few seconds so fog, particles, sound and
+// underwater colour cross-fade as you travel instead of switching at a border.
+const ambience = { t: 0, target: null, autumn: 0, lumen: 0, volcanic: 0, swamp: 0, jungle: 0, cold: 0, water: null, biome: -1 };
+const AMB_KEYS = { autumn: [13], lumen: [18], volcanic: [19], swamp: [17], jungle: [14], cold: [7, 23, 10] };
+function updateAmbience(dt, pos) {
+  ambience.t -= dt;
+  if (ambience.t <= 0 || !ambience.target) {
+    ambience.t = 0.3;
+    const tgt = { autumn: 0, lumen: 0, volcanic: 0, swamp: 0, jungle: 0, cold: 0 };
+    let n = 0;
+    for (let k = 0; k < 9; k++) {
+      const a = k / 8 * Math.PI * 2, r = k === 8 ? 0 : 28;
+      const b = world.biomeAt(Math.floor(pos[0] + Math.cos(a) * r), Math.floor(pos[2] + Math.sin(a) * r));
+      if (b < 0) continue;
+      n++;
+      for (const key in AMB_KEYS) if (AMB_KEYS[key].includes(b)) tgt[key]++;
+    }
+    for (const key in tgt) tgt[key] = n ? tgt[key] / n : 0;
+    ambience.target = tgt;
+    ambience.biome = world.biomeAt(Math.floor(pos[0]), Math.floor(pos[2]));
+    // the water the camera would be swimming in
+    const s = world.gen.sample(Math.floor(pos[0]), Math.floor(pos[2]));
+    const [murk, trop] = world.gen.waterParams(s);
+    const mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+    ambience.water = {
+      sa: mix(mix([0.30, 0.052, 0.028], [0.46, 0.26, 0.42], murk), [0.2, 0.03, 0.024], trop),
+      ss: 0.012 + (0.06 - 0.012) * murk + (0.016 - (0.012 + (0.06 - 0.012) * murk)) * trop,
+    };
+  }
+  const k = 1 - Math.exp(-dt / 2.5);
+  for (const key in ambience.target) ambience[key] += (ambience.target[key] - ambience[key]) * k;
+  return ambience;
+}
+
+// Instance data for the creatures in view (sphere test against the camera frustum).
+function buildCreatures(cam) {
+  if (!creatures.enabled || !creatures.list.length) return null;
+  const cp = Math.cos(cam.pitch);
+  const f = [Math.sin(cam.yaw) * cp, Math.sin(cam.pitch), -Math.cos(cam.yaw) * cp];
+  const cosHalf = Math.cos(Math.min(Math.PI * 0.49, cam.fov * 0.5 * Math.max(1, canvas.width / canvas.height) + 0.2));
+  const test = (rel, rad) => {
+    const d = Math.hypot(rel[0], rel[1], rel[2]);
+    if (d < rad + 1) return true;
+    const c = (rel[0] * f[0] + rel[1] * f[1] + rel[2] * f[2]) / d;
+    return c > cosHalf - rad / d;
+  };
+  creatures.build(cam.pos, null, test);
+  return { data: creatures.instanceData, count: creatures.count, shadowCount: creatures.shadowCount };
+}
+
+// ------------------------------------------------------------------ travel, discovery, saving
+function travelTo(x, z) {
+  const s = world.gen.sample(Math.floor(x), Math.floor(z));
+  player.pos = [Math.floor(x) + 0.5, Math.max(s.h, SEA) + 2, Math.floor(z) + 0.5];
+  player.vel = [0, 0, 0];
+  player.flying = false;
+  state.settle = true;
+  renderer.historyValid = false;
+  creatures.clear();
+  lastSurf = null;
+  toast(`Travelling to ${BIOME_NAMES[s.biome] ?? 'the unknown'}…`);
+}
+
+// After a jump across the map, drop the player onto the real ground (trees included) once it has loaded.
+function settleAfterTravel() {
+  const fx = Math.floor(player.pos[0]), fz = Math.floor(player.pos[2]);
+  const col = world.column(fx >> 5, fz >> 5);
+  if (!col || !col.data || col.state !== 'ready') return;
+  let y = Math.min(250, col.alloc + 1);
+  while (y > 1 && !world.isSolid(fx, y - 1, fz)) y--;
+  if (world.getBlock(fx, y - 1, fz) === B.WATER) y++;
+  player.pos[1] = y + 0.01;
+  player.vel = [0, 0, 0];
+  state.settle = false;
+}
+
+function updateBiomeCard(dt) {
+  state.biomeTimer -= dt;
+  if (state.biomeTimer > 0) return;
+  state.biomeTimer = 0.4;
+  const b = world.biomeAt(Math.floor(player.pos[0]), Math.floor(player.pos[2]));
+  if (b < 0 || b === state.biomeCur) { state.biomeCand = b; state.biomeStable = 0; return; }
+  if (b !== state.biomeCand) { state.biomeCand = b; state.biomeStable = 0; return; }
+  state.biomeStable = (state.biomeStable ?? 0) + 0.4;
+  if (state.biomeStable < 1.6) return;
+  state.biomeCur = b;
+  const first = !state.journal.biomes.has(b);
+  state.journal.biomes.add(b);
+  if (first) state.dirty = true;
+  const now = performance.now();
+  state.titleSeen = state.titleSeen ?? {};
+  if (!first && now - (state.titleSeen[b] ?? -1e9) < 60000) return;
+  state.titleSeen[b] = now;
+  showBiomeTitle(BIOME_NAMES[b], first);
+}
+
+function showBiomeTitle(name, first) {
+  const el = $('biome-title');
+  el.querySelector('.kicker').textContent = first ? 'New discovery' : '';
+  el.querySelector('h2').textContent = name;
+  el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), 4200);
+}
+
+function saveWorld() {
+  if (TEST || !world || !player) return;
+  const ok = writeSave({
+    seed, savedAt: Date.now(), pos: player.pos.slice(), yaw: player.yaw, pitch: player.pitch,
+    hours: state.hours, day: state.day, home: state.home,
+    journal: { biomes: [...state.journal.biomes], creatures: [...state.journal.creatures] },
+    edits: packEdits(world.edits),
+  });
+  state.dirty = false;
+  const el = $('save-status');
+  if (el) el.textContent = ok ? 'Your world, edits and discoveries are saved in this browser.' : 'This browser is not letting Lumencraft save, so progress will be lost when the page closes.';
+}
+
+function autosave(dt) {
+  state.saveTimer += dt;
+  if (state.saveTimer < 20) return;
+  state.saveTimer = 0;
+  saveWorld();
+}
+window.addEventListener('pagehide', () => { if (state.mode !== 'boot' && state.mode !== 'title') saveWorld(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && (state.mode === 'play' || state.mode === 'pause')) saveWorld(); });
+
+// Inside the claude.ai artifact viewer, files are offered through the platform's downloads capability
+// (the viewer confirms the save); as a standalone page a plain download link works.
+const downloadsCap = window.claude?.use ? window.claude.use('downloads').catch(() => null) : Promise.resolve(null);
+function captureScreenshot() {
+  const d = new Date();
+  const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}${String(d.getSeconds()).padStart(2, '0')}`;
+  const filename = `lumencraft-${stamp}.png`;
+  canvas.toBlob(async (blob) => {
+    if (!blob) { toast('The screenshot could not be captured'); return; }
+    const downloads = await downloadsCap;
+    if (downloads) {
+      try {
+        await downloads.save({ filename, data: blob });
+        toast('Screenshot saved');
+      } catch (err) {
+        const code = err?.code;
+        toast(code === 'declined' ? 'Screenshot not saved' : code === 'rate_limited' ? 'A save is already waiting for your answer' : 'Screenshots can\'t be saved in this view');
+      }
+      return;
+    }
+    if (window.claude?.use) { toast('Screenshots can\'t be saved in this view'); return; }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    toast('Screenshot saved to your downloads');
+  }, 'image/png');
+}
+
+// ------------------------------------------------------------------ photo mode
+function enterPhoto() {
+  const e = player.eye(false);
+  state.photo = { pos: e, yaw: player.yaw, pitch: player.pitch, vel: [0, 0, 0], fov: settings.fov, aperture: 0.09, autoFocus: true, focus: 10, letterbox: true };
+  state.mode = 'photo';
+  keys.clear();
+  $('hud').hidden = true;
+  $('photo').hidden = false;
+  updatePhotoStatus();
+}
+function exitPhoto() {
+  if (state.mode !== 'photo') return;
+  state.mode = 'play';
+  $('photo').hidden = true;
+  $('hud').hidden = false;
+  keys.clear();
+}
+function updatePhotoStatus() {
+  const p = state.photo;
+  if (!p) return;
+  const f = p.autoFocus ? 'auto' : `${p.focus.toFixed(1)} m`;
+  $('photo-status').textContent = `f/${(0.9 / Math.max(p.aperture, 0.001)).toFixed(1)} · focus ${f} · ${p.fov}° · ${fmtTime(state.hours)}${p.letterbox ? ' · 2.39:1' : ''}`;
+}
+function updatePhotoCamera(dt) {
+  const p = state.photo;
+  const cp = Math.cos(p.pitch);
+  const f = [Math.sin(p.yaw) * cp, Math.sin(p.pitch), -Math.cos(p.yaw) * cp];
+  const r = [Math.cos(p.yaw), 0, Math.sin(p.yaw)];
+  const want = [0, 0, 0];
+  const add = (v, k) => { want[0] += v[0] * k; want[1] += v[1] * k; want[2] += v[2] * k; };
+  if (keys.has('KeyW')) add(f, 1);
+  if (keys.has('KeyS')) add(f, -1);
+  if (keys.has('KeyD')) add(r, 1);
+  if (keys.has('KeyA')) add(r, -1);
+  if (keys.has('Space')) add([0, 1, 0], 1);
+  if (keys.has('KeyC') || keys.has('ControlLeft')) add([0, 1, 0], -1);
+  const speed = keys.has('ShiftLeft') || keys.has('ShiftRight') ? 22 : 5;
+  const k = 1 - Math.exp(-dt * 5);
+  for (let i = 0; i < 3; i++) { p.vel[i] += (want[i] * speed - p.vel[i]) * k; p.pos[i] += p.vel[i] * dt; }
+  world.update(p.pos[0], p.pos[2], f[0], f[2]);
+  state.selection = null;
+  if ((state.photoT = (state.photoT ?? 0) + dt) > 0.25) { state.photoT = 0; updatePhotoStatus(); }
+  return { pos: p.pos.slice(), yaw: p.yaw, pitch: p.pitch, fov: p.fov * Math.PI / 180 };
+}
+
+// ------------------------------------------------------------------ atlas & journal
+function openMap() {
+  const wasPlay = state.mode === 'play';
+  state.mode = 'pause';
+  keys.clear();
+  state.mouse.left = state.mouse.right = false;
+  state.mapFromPlay = wasPlay;
+  if (document.pointerLockElement) { state.paletteOpening = true; document.exitPointerLock(); }
+  $('pause').hidden = true;
+  mapView.discovered = state.journal.biomes;
+  mapView.show(player.pos, player.yaw, state.home);
+}
+
+function openJournal() {
+  if (state.mode === 'play') {
+    state.mode = 'pause';
+    keys.clear();
+    if (document.pointerLockElement) { state.paletteOpening = true; document.exitPointerLock(); }
+  }
+  $('pause').hidden = false;
+  showPanel('journal');
+  const jb = $('j-biomes'), jc = $('j-creatures');
+  jb.innerHTML = ''; jc.innerHTML = '';
+  BIOME_NAMES.forEach((n, b) => { const el = document.createElement('span'); el.textContent = n; if (state.journal.biomes.has(b)) el.className = 'found'; jb.appendChild(el); });
+  Object.entries(SPECIES).forEach(([k, sp]) => { const el = document.createElement('span'); el.textContent = sp.name; if (state.journal.creatures.has(k)) el.className = 'found'; jc.appendChild(el); });
+  $('j-biome-count').textContent = `${state.journal.biomes.size} / ${BIOME_NAMES.length}`;
+  $('j-creature-count').textContent = `${state.journal.creatures.size} / ${Object.keys(SPECIES).length}`;
+}
+
+function newWorld(text) {
+  let s = (Math.random() * 1e9) | 0;
+  const t = (text ?? '').trim();
+  if (t) {
+    if (/^-?\d+$/.test(t)) s = parseInt(t, 10) | 0;
+    else { s = 0; for (const ch of t) s = (Math.imul(s, 31) + ch.charCodeAt(0)) | 0; }
+  }
+  clearSave();
+  saved = null;
+  startWorld(s, null);
+  state.mode = 'boot';
+  readyFrames = 0;
+  $('pause').hidden = true;
+  $('pause').classList.remove('from-title');
+  $('title').hidden = true;
+  $('boot').hidden = false;
+  $('boot').classList.remove('done');
+  toast(`New world · seed ${s}`);
+}
+
+// ------------------------------------------------------------------ undo / redo
+function recordEdit(changes) {
+  if (!changes.length) return;
+  state.undo.push(changes);
+  if (state.undo.length > 256) state.undo.shift();
+  state.redo.length = 0;
+  state.dirty = true;
+}
+function applyChanges(changes, forward) {
+  const list = forward ? changes : changes.slice().reverse();
+  for (const c of list) world.setBlock(c.x, c.y, c.z, forward ? c.next : c.prev);
+}
+function undo() {
+  const c = state.undo.pop();
+  if (!c) { toast('Nothing to undo'); return; }
+  applyChanges(c, false); state.redo.push(c);
+  toast(`Undone · ${state.undo.length} left`);
+}
+function redo() {
+  const c = state.redo.pop();
+  if (!c) { toast('Nothing to redo'); return; }
+  applyChanges(c, true); state.undo.push(c);
+  toast('Redone');
+}
+
 // ------------------------------------------------------------------ interaction
 function breakBlock(hit) {
   const [x, y, z] = hit.pos;
@@ -335,8 +703,13 @@ function breakBlock(hit) {
   if (y <= 0) return;
   // plants on top of a broken block fall with it
   if (world.setBlock(x, y, z, 0)) {
+    const changes = [{ x, y, z, prev: id, next: 0 }];
     const above = world.getBlock(x, y + 1, z);
-    if (above > 0 && (RENDER[above] === R.CROSS || RENDER[above] === R.CARPET || RENDER[above] === R.TORCH)) world.setBlock(x, y + 1, z, 0);
+    if (above > 0 && (RENDER[above] === R.CROSS || RENDER[above] === R.CARPET || RENDER[above] === R.TORCH || RENDER[above] === R.CAMPFIRE)) {
+      world.setBlock(x, y + 1, z, 0);
+      changes.push({ x, y: y + 1, z, prev: above, next: 0 });
+    }
+    recordEdit(changes);
     audio.hit(INFO[id]?.sound ?? 'stone', 'break');
     spawnDebris(x, y, z, id);
   }
@@ -354,8 +727,11 @@ function placeBlock(hit) {
   const cur = world.getBlock(px, py, pz);
   if (cur !== 0 && cur !== B.WATER && RENDER[cur] !== R.CROSS && RENDER[cur] !== R.CARPET) return;
   if (SOLID[id] && player.intersectsBlock(px, py, pz)) return;
-  if ((RENDER[id] === R.CROSS || RENDER[id] === R.CARPET || RENDER[id] === R.TORCH) && !world.isSolid(px, py - 1, pz)) return;
-  if (world.setBlock(px, py, pz, id)) audio.hit(INFO[id]?.sound ?? 'stone', 'place');
+  if ((RENDER[id] === R.CROSS || RENDER[id] === R.CARPET || RENDER[id] === R.TORCH || RENDER[id] === R.CAMPFIRE) && !world.isSolid(px, py - 1, pz) && id !== B.LILY_PAD && id !== B.VINES && id !== B.HANGING_MOSS) return;
+  if (world.setBlock(px, py, pz, id)) {
+    recordEdit([{ x: px, y: py, z: pz, prev: cur, next: id }]);
+    audio.hit(INFO[id]?.sound ?? 'stone', 'place');
+  }
 }
 
 function spawnDebris(x, y, z, id) {
@@ -397,13 +773,39 @@ function isTyping(e) { const t = e.target; return t && (t.tagName === 'INPUT' ||
 window.addEventListener('keydown', (e) => {
   if (isTyping(e)) return;
   if (e.code === 'Tab' || e.code === 'F1' || e.code === 'F3' || e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
+  if (state.mode === 'photo') {
+    keys.add(e.code);
+    if (e.repeat) return;
+    const p = state.photo;
+    if (e.code === 'KeyP' || e.code === 'Escape') exitPhoto();
+    if (e.code === 'KeyL') p.letterbox = !p.letterbox;
+    if (e.code === 'KeyZ') p.fov = Math.max(15, p.fov - 5);
+    if (e.code === 'KeyX') p.fov = Math.min(110, p.fov + 5);
+    if (e.code === 'KeyF') { p.autoFocus = !p.autoFocus; p.focus = state.focus; toast(p.autoFocus ? 'Autofocus on' : 'Manual focus'); }
+    if (e.code === 'F2') state.capture = true;
+    if (e.code === 'Equal') state.evComp = Math.min(2, state.evComp + 0.25);
+    if (e.code === 'Minus') state.evComp = Math.max(-2, state.evComp - 0.25);
+    updatePhotoStatus();
+    return;
+  }
   if (state.mode !== 'play') {
+    if (!$('map').hidden && (e.code === 'Escape' || e.code === 'Tab' || e.code === 'KeyM')) { state.mapToPause = e.code === 'Escape'; mapView.hide(); return; }
     if (e.code === 'Escape' && state.mode === 'pause' && !$('palette').hidden) { closePalette(); }
-    if (e.code === 'Enter' && state.mode === 'title') enterWorld();
+    if (e.code === 'Enter' && state.mode === 'title') (saved ? continueWorld : enterWorld)();
     return;
   }
   keys.add(e.code);
   if (e.repeat) return;
+  if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); keys.delete(e.code); return; }
+  if ((e.ctrlKey || e.metaKey) && e.code === 'KeyY') { e.preventDefault(); redo(); keys.delete(e.code); return; }
+  if (e.code === 'Tab') { openMap(); return; }
+  if (e.code === 'KeyP') { enterPhoto(); return; }
+  if (e.code === 'F2') { state.capture = true; }
+  if (e.code === 'KeyJ') { openJournal(); return; }
+  if (e.code === 'KeyH') {
+    if (e.shiftKey) { state.home = player.pos.slice(); state.dirty = true; toast('Home set here'); }
+    else { travelTo(state.home[0], state.home[2]); }
+  }
   if (e.code.startsWith('Digit')) { const n = +e.code.slice(5); if (n >= 1 && n <= 9) selectSlot(n - 1); }
   if (e.code === 'Space') {
     const t = performance.now();
@@ -414,7 +816,7 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyT') { settings.dayCycle = !settings.dayCycle; saveSettings(); toast(settings.dayCycle ? 'Day cycle running' : 'Time paused'); syncSettingsUI(); }
   if (e.code === 'KeyR') { cycleWeather(); }
   if (e.code === 'F1') { state.hudHidden = !state.hudHidden; $('hud').classList.toggle('hidden', state.hudHidden); }
-  if (e.code === 'F3' || e.code === 'KeyP') { state.perf = !state.perf; $('perf').hidden = !state.perf; }
+  if (e.code === 'F3') { state.perf = !state.perf; $('perf').hidden = !state.perf; }
   if (e.code === 'KeyE') { openPalette(); }
   if (e.code === 'KeyM') { settings.volume = settings.volume > 0 ? 0 : 0.7; audio.setVolume(settings.volume); saveSettings(); syncSettingsUI(); toast(settings.volume ? 'Sound on' : 'Muted'); }
   if (e.code === 'Equal') { state.evComp = Math.min(2, state.evComp + 0.25); toast(`Exposure ${state.evComp >= 0 ? '+' : ''}${state.evComp.toFixed(2)} EV`); }
@@ -424,6 +826,7 @@ window.addEventListener('keyup', (e) => keys.delete(e.code));
 window.addEventListener('blur', () => keys.clear());
 
 canvas.addEventListener('mousedown', (e) => {
+  if (state.mode === 'photo') { if (!state.pointerLocked && !state.dragLook) lockPointer(); if (state.dragLook) state.dragging = true; return; }
   if (state.mode !== 'play') return;
   if (!state.pointerLocked && !state.dragLook) { lockPointer(); return; }
   if (e.button === 0) { state.mouse.left = true; state.breakTimer = 0; state.dragMoved = 0; }
@@ -438,6 +841,13 @@ window.addEventListener('mouseup', (e) => {
 });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 window.addEventListener('mousemove', (e) => {
+  if (state.mode === 'photo') {
+    if (!(state.pointerLocked || (state.dragLook && state.dragging))) return;
+    const s = 0.0016 * settings.sensitivity * state.photo.fov / 74;
+    state.photo.yaw += e.movementX * s;
+    state.photo.pitch = Math.max(-1.55, Math.min(1.55, state.photo.pitch - e.movementY * s));
+    return;
+  }
   if (state.mode !== 'play') return;
   const look = state.pointerLocked || (state.dragLook && state.dragging);
   if (!look) return;
@@ -450,6 +860,13 @@ window.addEventListener('mousemove', (e) => {
   }
 });
 window.addEventListener('wheel', (e) => {
+  if (state.mode === 'photo') {
+    const p = state.photo;
+    if (e.altKey) p.aperture = Math.min(0.4, Math.max(0, p.aperture * (e.deltaY > 0 ? 0.85 : 1.18) + (e.deltaY < 0 && p.aperture < 0.005 ? 0.01 : 0)));
+    else { p.autoFocus = false; p.focus = Math.min(400, Math.max(0.5, (p.focus || state.focus) * (e.deltaY > 0 ? 1.12 : 0.89))); }
+    updatePhotoStatus();
+    return;
+  }
   if (state.mode !== 'play') return;
   selectSlot((state.slot + (e.deltaY > 0 ? 1 : -1) + 9) % 9);
 }, { passive: true });
@@ -467,6 +884,7 @@ function enableDragLook() {
 }
 document.addEventListener('pointerlockchange', () => {
   state.pointerLocked = document.pointerLockElement === canvas;
+  if (!state.pointerLocked && state.mode === 'photo' && !state.dragLook) { exitPhoto(); pause(); return; }
   if (!state.pointerLocked && state.mode === 'play' && !state.dragLook) pause();
 });
 document.addEventListener('pointerlockerror', () => enableDragLook());
@@ -475,7 +893,17 @@ document.addEventListener('pointerlockerror', () => enableDragLook());
 function showTitle() {
   $('title').hidden = false;
   $('hud').hidden = true;
+  const has = !!saved && saved.seed === seed;
+  $('btn-continue').hidden = !has;
+  $('btn-enter').hidden = has;
+  const note = $('save-note');
+  note.hidden = !has;
+  if (has) {
+    const edits = Object.values(saved.edits ?? {}).reduce((a, v) => a + v.length / 2, 0);
+    note.textContent = `Saved world · seed ${saved.seed} · ${edits} block${edits === 1 ? '' : 's'} changed · ${saved.journal?.biomes?.length ?? 0} biome${(saved.journal?.biomes?.length ?? 0) === 1 ? '' : 's'} found · ${timeAgo(saved.savedAt ?? Date.now())}`;
+  }
 }
+function continueWorld() { enterWorld(); }
 function enterWorld() {
   audio.start();
   $('title').hidden = true;
@@ -488,6 +916,7 @@ function enterWorld() {
   lockPointer();
 }
 function pause() {
+  if (state.mode === 'play') saveWorld();
   state.mode = 'pause';
   keys.clear();
   state.mouse.left = state.mouse.right = false;
@@ -554,6 +983,13 @@ function blockIcon(id, size = 64) {
     fl.addColorStop(0, 'rgba(255,250,220,1)'); fl.addColorStop(0.35, 'rgba(255,200,90,0.95)'); fl.addColorStop(1, 'rgba(255,120,20,0)');
     g.fillStyle = fl;
     g.beginPath(); g.ellipse(32 * s, 18 * s, 9 * s, 13 * s, 0, 0, Math.PI * 2); g.fill();
+  } else if (RENDER[id] === R.CAMPFIRE) {
+    g.fillStyle = '#4a3220';
+    g.save(); g.translate(32 * s, 50 * s);
+    for (const a of [-0.35, 0.35]) { g.save(); g.rotate(a); g.fillRect(-22 * s, -4 * s, 44 * s, 8 * s); g.restore(); }
+    g.restore();
+    const { tc } = texCanvas(TEX_TOP[id], null);
+    g.drawImage(tc, 12 * s, 4 * s, 40 * s, 44 * s);
   } else if (RENDER[id] === R.CROSS || RENDER[id] === R.CARPET) {
     const { tc } = texCanvas(TEX_SIDE[id], tint);
     g.imageSmoothingEnabled = true;
@@ -590,17 +1026,32 @@ function buildHotbar() {
   });
 }
 
+let palCat = 'all';
+function buildPaletteTabs() {
+  const tabs = $('palette-tabs');
+  tabs.innerHTML = '';
+  for (const [key, label] of [['all', 'All'], ...PALETTE_CATS]) {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.setAttribute('aria-pressed', String(key === palCat));
+    b.addEventListener('click', () => { palCat = key; buildPaletteTabs(); buildPalette(); });
+    tabs.appendChild(b);
+  }
+}
 function buildPalette() {
   const grid = $('palette-grid');
   grid.innerHTML = '';
+  const q = ($('palette-search').value || '').trim().toLowerCase();
   for (const id of PALETTE) {
+    if (palCat !== 'all' && INFO[id].cat !== palCat) continue;
+    if (q && !INFO[id].name.toLowerCase().includes(q)) continue;
     const el = document.createElement('button');
     el.className = 'pal-item';
     el.title = INFO[id].name;
     const img = new Image(); img.src = blockIcon(id); img.alt = '';
     el.appendChild(img);
     const lbl = document.createElement('span'); lbl.textContent = INFO[id].name; el.appendChild(lbl);
-    if (EMIT[id]) el.classList.add('glow');
+    if (EMIT[id] || EMIT_COOL[id]) el.classList.add('glow');
     el.addEventListener('click', () => {
       settings.hotbar[state.slot] = id;
       saveSettings();
@@ -616,6 +1067,7 @@ function openPalette() {
   keys.clear();
   if (document.pointerLockElement) { state.paletteOpening = true; document.exitPointerLock(); }
   $('palette').hidden = false;
+  setTimeout(() => $('palette-search').focus(), 30);
 }
 function closePalette(silent) {
   if ($('palette').hidden) return;
@@ -643,6 +1095,8 @@ function updateHUD(env) {
   const cond = w.rain > 0.85 && w.flash > 0 ? 'Thunderstorm' : w.rain > 0.5 ? 'Rain' : w.coverage > 0.6 ? 'Overcast' : env.night > 0.5 ? (env.moonIllum > 0.03 ? 'Moonlit' : 'Starlit') : 'Clear';
   $('clock').textContent = fmtTime(state.hours);
   $('cond').textContent = cond;
+  const bh = world.biomeAt(Math.floor(player.pos[0]), Math.floor(player.pos[2]));
+  $('biome-chip').textContent = BIOME_NAMES[bh] ?? '';
   if (state.perf) {
     const p = player.pos;
     const biome = world.biomeAt(Math.floor(p[0]), Math.floor(p[2]));
@@ -698,6 +1152,9 @@ function syncSettingsUI() {
   set('s-grain', settings.grain);
   set('s-mblur', settings.motionBlur);
   set('s-gi', settings.gi);
+  set('s-flare', settings.lensFlare);
+  set('s-cine', settings.cinematic);
+  set('s-creatures', settings.creatures);
   set('s-sharpen', Math.round(settings.sharpen * 100));
   set('s-time', Math.round(state.hours * 4) / 4);
   $('s-scale').disabled = settings.dynamicRes;
@@ -727,18 +1184,23 @@ function setQuality(qname) {
 
 function bindUI() {
   $('btn-enter').addEventListener('click', enterWorld);
+  $('btn-continue').addEventListener('click', continueWorld);
+  $('btn-title-new').addEventListener('click', () => { $('pause').hidden = false; showPanel('newworld'); $('pause').classList.add('from-title'); setTimeout(() => $('nw-seed').focus(), 30); });
+  $('btn-map').addEventListener('click', () => { $('pause').hidden = true; mapView.discovered = state.journal.biomes; mapView.show(player.pos, player.yaw, state.home); });
+  $('btn-journal').addEventListener('click', openJournal);
+  $('btn-photo').addEventListener('click', () => { $('pause').hidden = true; enterPhoto(); lockPointer(); });
+  $('nw-create').addEventListener('click', () => newWorld($('nw-seed').value));
+  $('nw-seed').addEventListener('keydown', (e) => { if (e.code === 'Enter') newWorld($('nw-seed').value); });
+  $('palette-search').addEventListener('input', buildPalette);
+  $('s-flare').addEventListener('change', (e) => { settings.lensFlare = e.target.checked; saveSettings(); });
+  $('s-cine').addEventListener('change', (e) => { settings.cinematic = e.target.checked; saveSettings(); });
+  $('s-creatures').addEventListener('change', (e) => { settings.creatures = e.target.checked; saveSettings(); });
+  buildPaletteTabs();
   $('btn-title-settings').addEventListener('click', () => { $('pause').hidden = false; showPanel('settings'); $('pause').classList.add('from-title'); });
   $('btn-resume').addEventListener('click', resume);
   $('btn-settings').addEventListener('click', () => showPanel('settings'));
   $('btn-controls').addEventListener('click', () => showPanel('controls'));
-  $('btn-newworld').addEventListener('click', () => {
-    startWorld((Math.random() * 1e9) | 0);
-    state.mode = 'boot';
-    readyFrames = 0;
-    $('pause').hidden = true;
-    $('boot').hidden = false;
-    $('boot').classList.remove('done');
-  });
+  $('btn-newworld').addEventListener('click', () => { showPanel('newworld'); setTimeout(() => $('nw-seed').focus(), 30); });
   for (const b of document.querySelectorAll('[data-back]')) b.addEventListener('click', () => {
     if ($('pause').classList.contains('from-title')) { $('pause').hidden = true; $('pause').classList.remove('from-title'); return; }
     showPanel('main');
@@ -772,6 +1234,9 @@ function bindUI() {
 // expose a tiny debug surface for automated screenshots
 window.__lumencraft = {
   state, settings, get world() { return world; }, get player() { return player; }, get renderer() { return renderer; }, weather: () => weather,
+  get creatures() { return creatures; }, SPECIES,
+  spawn(key, n = 3, dist = 7) { const e = player.eye(false); creatures.spawnNear(key, e, player.forward(), n, dist); },
+  enterPhoto, exitPhoto, openMap, openJournal, travelTo, undo, redo, get mapView() { return mapView; },
   resume(n) { testLeft = n; document.title = 'running'; requestAnimationFrame(loop); },
 };
 

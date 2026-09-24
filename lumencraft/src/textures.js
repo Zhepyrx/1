@@ -21,7 +21,7 @@ export const TEX_INFO = {
   glass: I(0, 0.01, 0.0, 16), coal_ore: I(0.04, 0.05, 0.3, 0), iron_ore: I(0.04, 0.05, 0.3, 0),
   gold_ore: I(0.04, 0.05, 0.3, 0), diamond_ore: I(0.04, 0.05, 0.3, 0), copper_ore: I(0.04, 0.05, 0.3, 0),
   emerald_ore: I(0.04, 0.05, 0.3, 0), amethyst: I(0.06, 0.06, 0.0, 0, 1.6), glowstone: I(0.05, 0.05, 0.0, 0, 7),
-  lava: I(0.03, 0.04, 0.0, 4, 9), deepslate: I(0.05, 0.06, 0.3, 1), obsidian: I(0.02, 0.03, 0.0, 0),
+  lava: I(0.03, 0.04, 0.0, 4, 3.6), deepslate: I(0.05, 0.06, 0.3, 1), obsidian: I(0.02, 0.03, 0.0, 0),
   clay: I(0.015, 0.02, 0.6, 1), moss: I(0.04, 0.05, 0.8, 1), mossy_cobblestone: I(0.09, 0.09, 0.6, 0),
   gold_block: I(0.02, 0.03, 0.0, 0), copper_block: I(0.02, 0.03, 0.1, 0), marble: I(0.01, 0.015, 0.0, 0),
   terracotta: I(0.015, 0.02, 0.5, 0), lamp: I(0.04, 0.05, 0.0, 0, 8), cactus_side: I(0.03, 0.05, 0.2, 2),
@@ -30,6 +30,25 @@ export const TEX_INFO = {
   cornflower: I(0, 0.02, 0.2, 2 | 8), daisy: I(0, 0.02, 0.2, 2 | 8), allium: I(0, 0.02, 0.2, 2 | 8),
   dead_bush: I(0, 0.02, 0.2, 2 | 8), seagrass: I(0, 0.02, 0.0, 2 | 8), glow_mushroom: I(0, 0.02, 0.0, 8, 5),
   pink_petals: I(0, 0.02, 0.2, 2 | 8), water: I(0, 0, 0, 16),
+  red_sand: I(0.02, 0.03, 0.9, 1), terracotta_white: I(0.015, 0.02, 0.5, 0), terracotta_orange: I(0.015, 0.02, 0.5, 0),
+  terracotta_yellow: I(0.015, 0.02, 0.5, 0), terracotta_red: I(0.015, 0.02, 0.5, 0), terracotta_brown: I(0.015, 0.02, 0.5, 0),
+  terracotta_light: I(0.015, 0.02, 0.5, 0), mud: I(0.03, 0.04, 0.2, 1), podzol_top: I(0.04, 0.05, 0.8, 1),
+  podzol_side: I(0.04, 0.05, 0.8, 0), basalt_side: I(0.06, 0.07, 0.3, 0), basalt_top: I(0.05, 0.06, 0.3, 1),
+  magma: I(0.05, 0.06, 0.0, 64, 2.6), ash: I(0.02, 0.03, 0.9, 1), glowmoss_top: I(0.04, 0.05, 0.6, 1 | 64, 2.2),
+  glowmoss_side: I(0.04, 0.05, 0.7, 64, 2.2), mushroom_stem: I(0.03, 0.04, 0.4, 0), glow_cap: I(0.04, 0.05, 0.2, 64, 3.2),
+  packed_ice: I(0.02, 0.03, 0.0, 0), blue_ice: I(0.02, 0.03, 0.0, 0), coral_pink: I(0.08, 0.08, 0.0, 0),
+  coral_orange: I(0.07, 0.07, 0.0, 0), coral_blue: I(0.08, 0.08, 0.0, 0),
+  mossy_stone_bricks: I(0.07, 0.07, 0.6, 0), spruce_planks: I(0.035, 0.04, 0.5, 0), cherry_planks: I(0.035, 0.04, 0.5, 0),
+  quartz_tiles: I(0.01, 0.015, 0.0, 0), paper_lantern: I(0.03, 0.04, 0.0, 0, 7), stained_amber: I(0, 0.02, 0.0, 16),
+  stained_rose: I(0, 0.02, 0.0, 16), stained_azure: I(0, 0.02, 0.0, 16), campfire_log: I(0.05, 0.06, 0.5, 0),
+  fire: I(0, 0.01, 0.0, 8 | 32, 14),
+  maple_red: I(0, 0.04, 0.2, 2 | 8), maple_orange: I(0, 0.04, 0.2, 2 | 8), maple_yellow: I(0, 0.04, 0.2, 2 | 8),
+  jungle_log: I(0.07, 0.08, 0.6, 0), jungle_leaves: I(0, 0.04, 0.2, 2 | 8), acacia_log: I(0.06, 0.07, 0.6, 0),
+  acacia_leaves: I(0, 0.04, 0.2, 2 | 8), willow_leaves: I(0, 0.03, 0.2, 2 | 8), palm_log: I(0.06, 0.07, 0.5, 0),
+  palm_leaves: I(0, 0.03, 0.2, 2 | 8), leaf_litter: I(0, 0.03, 0.3, 2 | 8), lily_pad: I(0, 0.02, 0.0, 2 | 8),
+  vines: I(0, 0.02, 0.2, 2 | 8), hanging_moss: I(0, 0.02, 0.2, 2 | 8), lavender: I(0, 0.02, 0.2, 2 | 8),
+  sunflower: I(0, 0.02, 0.2, 2 | 8), cattail: I(0, 0.02, 0.2, 2 | 8), kelp: I(0, 0.02, 0.0, 2 | 8),
+  coral_fan: I(0, 0.02, 0.0, 2 | 8), glow_fern: I(0, 0.02, 0.2, 2 | 8 | 64, 3.0), red_mushroom: I(0, 0.02, 0.3, 8),
 };
 
 const LIB = /* glsl */`
@@ -69,6 +88,108 @@ vec4 voronoi(vec2 p, vec2 per, float seed, float jit) {
 }
 struct M { vec3 alb; float h; float rough; float metal; float emit; float alpha; };
 M mdef() { M m; m.alb = vec3(0.5); m.h = 0.5; m.rough = 0.8; m.metal = 0.0; m.emit = 0.0; m.alpha = 1.0; return m; }
+// fired clay: fine grain, faint strata and the odd mineral fleck
+M terracottaM(vec2 uv, vec3 col, float seed) {
+  M m = mdef();
+  float n = fbm(uv, vec2(4.0), 5, 0.5, seed);
+  float f = vnoise(uv * 64.0, vec2(64.0), seed + 4.0);
+  float strata = vnoise(vec2(uv.x * 2.0, uv.y * 12.0), vec2(2.0, 12.0), seed + 7.0);
+  float fleck = step(0.985, hash(floor(uv * 96.0) + seed));
+  vec3 c = col * (0.9 + 0.14 * n) * (0.96 + 0.06 * f) * (0.95 + 0.08 * strata);
+  c = mix(c, c * 1.25 + 0.05, fleck * 0.6);
+  m.alb = srgb(c);
+  m.h = 0.5 + 0.2 * n + 0.1 * f; m.rough = 0.86 - 0.1 * fleck;
+  return m;
+}
+M plankM(vec2 uv, vec3 c0, vec3 c1, float seed) {
+  M m = mdef();
+  float by = uv.y * 4.0; float bi = floor(by); float fy = fract(by);
+  float off = hash(vec2(bi, 3.0 + seed));
+  float jx = fract(uv.x + off);
+  float joint = 1.0 - smoothstep(0.0, 0.012, min(jx, 1.0 - jx));
+  float gw = fbm(uv, vec2(2.0, 8.0), 3, 0.5, bi * 7.0 + 1.0 + seed);
+  float grain = 0.5 + 0.5 * sin((fy * 2.5 + gw * 5.0) * 6.2832);
+  float fine = vnoise(vec2(uv.x * 4.0, uv.y * 96.0), vec2(4.0, 96.0), bi + seed);
+  float gap = 1.0 - smoothstep(0.0, 0.06, min(fy, 1.0 - fy));
+  vec3 base = mix(c0, c1, off * 0.7 + 0.3 * gw);
+  base *= (0.86 + 0.14 * grain) * (0.94 + 0.08 * fine);
+  float g2 = max(gap, joint);
+  m.alb = srgb(base * (1.0 - 0.65 * g2));
+  m.h = 0.75 + 0.05 * grain + 0.03 * fine - 0.7 * g2;
+  m.rough = 0.55 + 0.2 * fine;
+  return m;
+}
+// leaded stained glass: tinted panes, lead cames and a few bubbles
+M stainedM(vec2 uv, vec3 col) {
+  M m = mdef();
+  vec4 v = voronoi(uv * vec2(2.0, 3.0), vec2(2.0, 3.0), 3.0, 0.7);
+  vec2 d = min(uv, 1.0 - uv);
+  float frame = 1.0 - smoothstep(0.03, 0.045, min(d.x, d.y));
+  float lead = max(frame, 1.0 - smoothstep(0.012, 0.028, v.y - v.x));
+  float pane = 0.8 + 0.4 * v.z;
+  float n = fbm(uv, vec2(6.0), 3, 0.5, 2.0);
+  m.alb = mix(srgb(col * pane * (0.9 + 0.2 * n)), srgb(vec3(0.12, 0.12, 0.13)), lead);
+  m.alpha = mix(0.55 + 0.15 * n, 1.0, lead);
+  m.h = 0.5 + 0.3 * lead; m.rough = mix(0.03, 0.4, lead); m.metal = lead * 0.6;
+  return m;
+}
+// palmate (maple-like) leaves scattered over cells
+float lobedLayer(vec2 uv, float freq, float seed, float R, out float shade, out float vein) {
+  vec2 p = uv * freq; vec2 n = floor(p), f = fract(p);
+  float best = 0.0; shade = 0.0; vein = 0.0;
+  for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+    vec2 g = vec2(float(i), float(j));
+    vec2 cell = mod(n + g, vec2(freq));
+    vec2 o = hash2(cell + seed);
+    vec2 c = f - (g + o);
+    float ang = hash(cell + seed + 3.0) * 6.2832;
+    float cs = cos(ang), sn = sin(ang);
+    vec2 q = vec2(cs * c.x - sn * c.y, sn * c.x + cs * c.y);
+    float r = length(q), a = atan(q.y, q.x);
+    float lobes = pow(abs(cos(a * 2.5)), 0.6);
+    float edge = R * (0.55 + 0.45 * lobes) * (0.92 + 0.08 * cos(a * 17.0));
+    if (r < edge) {
+      float v = (1.0 - r / edge) * 0.8 + hash(cell + seed + 5.0) * 0.45;
+      if (v > best) {
+        best = v; shade = hash(cell + seed + 7.0);
+        vein = smoothstep(0.02, 0.0, abs(sin(a * 2.5)) * r) * step(r, edge * 0.85);
+      }
+    }
+  }
+  return best;
+}
+M mapleM(vec2 uv, vec3 c0, vec3 c1, vec3 c2) {
+  M m = mdef();
+  float s1, v1, s2, v2, s3, v3;
+  float a1 = lobedLayer(uv, 4.0, 3.0, 0.36, s1, v1);
+  float a2 = lobedLayer(uv, 6.0, 17.0, 0.34, s2, v2);
+  float a3 = lobedLayer(uv, 5.0, 31.0, 0.35, s3, v3);
+  float h = a1, sh = s1, vn = v1;
+  if (a2 * 0.9 > h) { h = a2 * 0.9; sh = s2; vn = v2; }
+  if (a3 * 0.8 > h) { h = a3 * 0.8; sh = s3; vn = v3; }
+  m.alpha = step(0.02, h);
+  vec3 c = sh < 0.5 ? mix(c0, c1, sh * 2.0) : mix(c1, c2, sh * 2.0 - 1.0);
+  c *= (0.7 + 0.38 * h) * (1.0 - 0.22 * vn);
+  m.alb = srgb(c); m.h = h; m.rough = 0.6;
+  return m;
+}
+// strands rooted at the bottom of the texture (hung upside down by the mesher)
+float strands(vec2 uv, float n, float seed, float w, out float lum) {
+  float a = 0.0; lum = 0.0;
+  float t = 1.0 - uv.y;
+  for (int i = 0; i < 24; i++) {
+    float fi = float(i);
+    if (fi >= n) break;
+    float x0 = hash(vec2(fi, seed));
+    float hh = 0.45 + 0.55 * hash(vec2(fi, seed + 2.0));
+    if (t > hh) continue;
+    float cx = x0 + 0.03 * sin(t * 11.0 + fi * 2.1);
+    float d = abs(fract(uv.x - cx + 0.5) - 0.5);
+    float ww = w * (0.6 + 0.4 * hash(vec2(fi, seed + 4.0))) * (1.0 - 0.6 * t / hh);
+    if (d < ww) { a = 1.0; lum = (0.55 + 0.45 * (1.0 - t / hh)) * (0.85 + 0.3 * hash(vec2(fi, seed + 5.0))); }
+  }
+  return a;
+}
 
 M dirtM(vec2 uv) {
   M m = mdef();
@@ -618,6 +739,448 @@ const MAT = {
     m.alb = srgb(mix(vec3(0.95, 0.62, 0.78), vec3(1.0, 0.82, 0.9), max(s1, s2)));
     m.h = h; m.rough = 0.5;`,
   water: `m.alb = srgb(vec3(0.1, 0.3, 0.5)); m.alpha = 0.6; m.rough = 0.02;`,
+  red_sand: `
+    float n = fbm(uv, vec2(4.0), 4, 0.5, 3.0);
+    float g = vnoise(uv * 128.0, vec2(128.0), 5.0);
+    float g2 = hash(floor(uv * 128.0) + 9.0);
+    float ripple = sin((uv.y + 0.07 * sin(uv.x * 12.566)) * 31.4159) * 0.5 + 0.5;
+    vec3 c = vec3(0.74, 0.38, 0.19) * (0.88 + 0.14 * n) * (0.93 + 0.12 * g);
+    c = mix(c, vec3(0.42, 0.2, 0.12), step(0.96, g2) * 0.6);
+    m.alb = srgb(c); m.h = 0.45 + 0.25 * ripple + 0.2 * g + 0.1 * n; m.rough = 0.95;`,
+  terracotta_white: `m = terracottaM(uv, vec3(0.84, 0.74, 0.66), 1.0);`,
+  terracotta_orange: `m = terracottaM(uv, vec3(0.74, 0.42, 0.2), 2.0);`,
+  terracotta_yellow: `m = terracottaM(uv, vec3(0.8, 0.6, 0.27), 3.0);`,
+  terracotta_red: `m = terracottaM(uv, vec3(0.6, 0.25, 0.17), 4.0);`,
+  terracotta_brown: `m = terracottaM(uv, vec3(0.42, 0.27, 0.18), 5.0);`,
+  terracotta_light: `m = terracottaM(uv, vec3(0.76, 0.55, 0.5), 6.0);`,
+  mud: `
+    float n = fbm(uv, vec2(3.0), 5, 0.55, 2.0);
+    float f = vnoise(uv * 48.0, vec2(48.0), 3.0);
+    vec4 v = voronoi(uv * 4.0, vec2(4.0), 7.0, 1.0);
+    float crack = smoothstep(0.035, 0.0, v.y - v.x) * smoothstep(0.55, 0.7, n);
+    float wet = smoothstep(0.45, 0.62, fbm(uv, vec2(4.0), 3, 0.5, 9.0));
+    vec3 c = vec3(0.32, 0.25, 0.18) * (0.8 + 0.3 * n) * (0.95 + 0.08 * f);
+    c *= 1.0 - 0.3 * wet - 0.4 * crack;
+    m.alb = srgb(c); m.h = 0.5 + 0.25 * n - 0.4 * crack - 0.15 * wet; m.rough = mix(0.72, 0.18, wet);`,
+  podzol_top: `
+    float n = fbm(uv, vec2(5.0), 4, 0.55, 4.0);
+    float needles = 0.0, nl = 0.0;
+    for (int k = 0; k < 3; k++) {
+      vec2 p = uv * (9.0 + float(k) * 4.0);
+      vec2 cell = floor(p), f = fract(p) - 0.5;
+      vec2 per = vec2(9.0 + float(k) * 4.0);
+      float a = hash(mod(cell, per) + float(k) * 13.0) * 3.1416;
+      vec2 dir = vec2(cos(a), sin(a));
+      float d = abs(dot(f, vec2(-dir.y, dir.x)));
+      float along = abs(dot(f, dir));
+      float on = step(d, 0.045) * step(along, 0.42) * step(0.35, hash(mod(cell, per) + 5.0 + float(k)));
+      if (on > 0.5) { needles = 1.0; nl = hash(mod(cell, per) + 9.0); }
+    }
+    vec3 c = mix(vec3(0.26, 0.17, 0.09), vec3(0.4, 0.27, 0.14), n);
+    c = mix(c, mix(vec3(0.5, 0.32, 0.15), vec3(0.3, 0.2, 0.1), nl), needles);
+    m.alb = srgb(c); m.h = 0.35 + 0.3 * n + 0.3 * needles; m.rough = 0.9;`,
+  podzol_side: `
+    m = dirtM(uv);
+    float edge = 0.1 + 0.06 * vnoise(vec2(uv.x * 8.0, 0.5), vec2(8.0, 1.0), 4.0) + 0.08 * hash(vec2(floor(uv.x * 32.0), 5.0));
+    if (uv.y < edge) {
+      float g = vnoise(uv * vec2(48.0, 12.0), vec2(48.0, 12.0), 6.0);
+      m.alb = srgb(mix(vec3(0.28, 0.18, 0.09), vec3(0.45, 0.3, 0.15), g)); m.h = 0.75 + 0.2 * g; m.rough = 0.9;
+    } else m.alb *= 1.0 - 0.3 * smoothstep(edge + 0.06, edge, uv.y);`,
+  basalt_side: `
+    float cols = vnoise(vec2(uv.x * 6.0, uv.y * 1.0), vec2(6.0, 1.0), 2.0);
+    float ridge = abs(fract(uv.x * 3.0 + cols * 0.35) - 0.5);
+    float groove = smoothstep(0.43, 0.5, ridge);
+    float n = fbm(uv, vec2(3.0, 8.0), 5, 0.55, 5.0);
+    float f = vnoise(uv * vec2(40.0, 90.0), vec2(40.0, 90.0), 7.0);
+    vec3 c = vec3(0.26, 0.26, 0.28) * (0.75 + 0.45 * n) * (0.92 + 0.12 * f) * (0.9 + 0.2 * cols);
+    m.alb = srgb(c * (1.0 - 0.5 * groove)); m.h = 0.6 + 0.25 * n - 0.5 * groove + 0.05 * f; m.rough = 0.75;`,
+  basalt_top: `
+    vec4 v = voronoi(uv * 3.0, vec2(3.0), 8.0, 0.8);
+    float crack = smoothstep(0.05, 0.0, v.y - v.x);
+    float n = fbm(uv, vec2(6.0), 4, 0.5, 3.0);
+    vec3 c = vec3(0.2, 0.2, 0.22) * (0.8 + 0.35 * n) * (0.85 + 0.3 * v.z);
+    m.alb = srgb(c * (1.0 - 0.6 * crack)); m.h = 0.7 - 0.6 * crack + 0.1 * n; m.rough = 0.72;`,
+  magma: `
+    vec4 v = voronoi(uv * 4.0, vec2(4.0), 6.0, 0.9);
+    float n = fbm(uv, vec2(5.0), 4, 0.55, 2.0);
+    float crack = smoothstep(0.09, 0.0, v.y - v.x - n * 0.05);
+    float hot = crack * (0.6 + 0.4 * n);
+    vec3 crust = vec3(0.16, 0.08, 0.06) * (0.7 + 0.5 * n) * (0.8 + 0.4 * v.z);
+    vec3 glow = mix(vec3(1.0, 0.25, 0.03), vec3(1.0, 0.7, 0.25), n);
+    m.alb = srgb(mix(crust, glow, hot)); m.emit = hot; m.h = 0.7 - 0.55 * crack + 0.1 * n; m.rough = mix(0.8, 0.5, hot);`,
+  ash: `
+    float n = fbm(uv, vec2(4.0), 5, 0.55, 6.0);
+    float f = vnoise(uv * 96.0, vec2(96.0), 2.0);
+    float cinder = step(0.975, hash(floor(uv * 64.0) + 3.0));
+    vec3 c = vec3(0.37, 0.36, 0.35) * (0.8 + 0.3 * n) * (0.92 + 0.12 * f);
+    c = mix(c, vec3(0.09, 0.08, 0.08), cinder * 0.8);
+    m.alb = srgb(c); m.h = 0.45 + 0.3 * n + 0.1 * f + 0.2 * cinder; m.rough = 0.97;`,
+  glowmoss_top: `
+    float n = fbm(uv, vec2(6.0), 5, 0.6, 3.0);
+    float f = vnoise(uv * 96.0, vec2(96.0), 1.0);
+    vec4 v = voronoi(uv * 18.0, vec2(18.0), 5.0, 1.0);
+    float tuft = pow(1.0 - v.x, 3.0);
+    vec4 sp = voronoi(uv * 11.0, vec2(11.0), 9.0, 1.0);
+    float spark = smoothstep(0.16, 0.03, sp.x) * step(0.55, sp.z);
+    float fil = smoothstep(0.03, 0.0, sp.y - sp.x) * smoothstep(0.55, 0.75, n);
+    vec3 base = mix(vec3(0.05, 0.12, 0.13), vec3(0.1, 0.24, 0.22), n * 0.6 + tuft * 0.4) * (0.85 + 0.25 * f);
+    vec3 glow = mix(vec3(0.25, 0.95, 1.0), vec3(0.6, 1.0, 0.85), sp.z);
+    float e = max(spark, fil * 0.5);
+    m.alb = srgb(mix(base, glow, e * 0.85)); m.emit = e;
+    m.h = 0.35 + 0.4 * tuft + 0.15 * n + 0.1 * f; m.rough = 0.9;`,
+  glowmoss_side: `
+    m = dirtM(uv);
+    m.alb *= vec3(0.7, 0.72, 0.8);
+    float edge = 0.14 + 0.08 * vnoise(vec2(uv.x * 8.0, 0.5), vec2(8.0, 1.0), 2.0) + 0.14 * pow(hash(vec2(floor(uv.x * 32.0), 3.0)), 3.0);
+    if (uv.y < edge) {
+      float g = vnoise(uv * vec2(48.0, 12.0), vec2(48.0, 12.0), 5.0);
+      vec4 sp = voronoi(uv * 14.0, vec2(14.0), 4.0, 1.0);
+      float spark = smoothstep(0.14, 0.03, sp.x) * step(0.6, sp.z);
+      m.alb = srgb(mix(mix(vec3(0.05, 0.12, 0.13), vec3(0.1, 0.24, 0.22), g), vec3(0.3, 1.0, 1.0), spark * 0.85));
+      m.emit = spark; m.h = 0.8 + 0.2 * g; m.rough = 0.9;
+    } else m.alb *= 1.0 - 0.35 * smoothstep(edge + 0.07, edge, uv.y);`,
+  mushroom_stem: `
+    float fib = vnoise(vec2(uv.x * 28.0, uv.y * 3.0), vec2(28.0, 3.0), 2.0);
+    float n = fbm(uv, vec2(3.0, 5.0), 4, 0.5, 4.0);
+    float ring = smoothstep(0.1, 0.0, abs(fract(uv.y * 2.0 + n * 0.2) - 0.5) - 0.42);
+    vec3 c = mix(vec3(0.78, 0.74, 0.66), vec3(0.9, 0.87, 0.8), fib) * (0.9 + 0.12 * n);
+    c *= 1.0 - 0.15 * ring;
+    m.alb = srgb(c); m.h = 0.5 + 0.3 * fib + 0.1 * n - 0.15 * ring; m.rough = 0.7;`,
+  glow_cap: `
+    float n = fbm(uv, vec2(3.0), 5, 0.55, 7.0);
+    vec4 v = voronoi(uv * 5.0, vec2(5.0), 3.0, 1.0);
+    float spot = smoothstep(0.3, 0.12, v.x) * step(0.4, v.z);
+    vec4 v2 = voronoi(uv * 12.0, vec2(12.0), 8.0, 1.0);
+    float vein = smoothstep(0.03, 0.0, v2.y - v2.x) * (0.4 + 0.6 * n);
+    vec3 skin = mix(vec3(0.04, 0.1, 0.24), vec3(0.07, 0.22, 0.38), n);
+    vec3 glow = mix(vec3(0.2, 0.85, 1.0), vec3(0.65, 0.95, 1.0), v.z);
+    float e = max(spot, vein * 0.55) + 0.08;
+    m.alb = srgb(mix(skin, glow, saturate(e))); m.emit = saturate(e);
+    m.h = 0.5 + 0.35 * spot + 0.15 * n - 0.2 * vein; m.rough = 0.45;`,
+  packed_ice: `
+    vec4 v = voronoi(uv * 4.0, vec2(4.0), 5.0, 1.0);
+    float crack = smoothstep(0.02, 0.0, v.y - v.x);
+    float n = fbm(uv, vec2(3.0), 5, 0.5, 4.0);
+    float bub = step(0.985, hash(floor(uv * 96.0) + 3.0));
+    vec3 c = mix(vec3(0.6, 0.75, 0.92), vec3(0.78, 0.88, 0.98), n) + crack * 0.18 + bub * 0.25;
+    m.alb = srgb(c); m.h = 0.6 - crack * 0.4 + 0.1 * n; m.rough = 0.08 + crack * 0.25;`,
+  blue_ice: `
+    vec4 v = voronoi(uv * 2.5, vec2(2.5), 9.0, 1.0);
+    float crack = smoothstep(0.018, 0.0, v.y - v.x);
+    float n = fbm(uv, vec2(2.0), 5, 0.55, 6.0);
+    vec3 c = mix(vec3(0.22, 0.42, 0.78), vec3(0.4, 0.62, 0.92), n) + crack * vec3(0.3, 0.35, 0.4);
+    m.alb = srgb(c); m.h = 0.65 - crack * 0.4; m.rough = 0.04 + crack * 0.2;`,
+  coral_pink: `
+    float w = fbm(uv, vec2(3.0), 3, 0.5, 2.0);
+    float maze = abs(sin((vnoise(uv * 6.0, vec2(6.0), 3.0) * 2.0 + w) * 9.0));
+    float ridge = smoothstep(0.35, 0.0, maze);
+    float pore = step(0.93, hash(floor(uv * 64.0) + 4.0));
+    vec3 c = mix(vec3(0.82, 0.32, 0.5), vec3(0.98, 0.55, 0.68), ridge) * (0.9 + 0.15 * w) * (1.0 - 0.3 * pore);
+    m.alb = srgb(c); m.h = 0.3 + 0.6 * ridge - 0.2 * pore; m.rough = 0.6;`,
+  coral_orange: `
+    vec4 v = voronoi(uv * 10.0, vec2(10.0), 6.0, 1.0);
+    float pit = smoothstep(0.22, 0.08, v.x);
+    float n = fbm(uv, vec2(4.0), 4, 0.5, 3.0);
+    vec3 c = mix(vec3(0.95, 0.46, 0.14), vec3(1.0, 0.7, 0.3), n) * (1.0 - 0.45 * pit);
+    m.alb = srgb(c); m.h = 0.65 - 0.55 * pit + 0.1 * n; m.rough = 0.65;`,
+  coral_blue: `
+    vec4 v = voronoi(uv * 6.0, vec2(6.0), 12.0, 0.85);
+    float tube = smoothstep(0.34, 0.26, v.x);
+    float hole = smoothstep(0.16, 0.1, v.x);
+    float n = fbm(uv, vec2(4.0), 4, 0.5, 8.0);
+    vec3 c = mix(vec3(0.2, 0.28, 0.75), vec3(0.45, 0.4, 0.95), v.z) * (0.85 + 0.2 * n);
+    c *= 1.0 - 0.7 * hole;
+    m.alb = srgb(c); m.h = 0.3 + 0.6 * tube - 0.8 * hole; m.rough = 0.6;`,
+  mossy_stone_bricks: `
+    vec2 p = uv * vec2(1.0, 2.0);
+    float row = floor(p.y);
+    p.x += mod(row, 2.0) * 0.5;
+    vec2 cell = floor(p), f = fract(p);
+    float ex = min(f.x, 1.0 - f.x), ey = min(f.y, 1.0 - f.y) * 0.5;
+    float d = min(ex, ey);
+    float mortar = 1.0 - smoothstep(0.012, 0.03, d);
+    float bevel = smoothstep(0.012, 0.07, d);
+    float bh = hash(mod(cell, vec2(1.0, 2.0)) + 4.0);
+    M s = stoneM(uv);
+    vec3 c = s.alb * (0.82 + 0.3 * bh);
+    float mn = fbm(uv, vec2(4.0), 4, 0.55, 14.0);
+    float fm = vnoise(uv * 96.0, vec2(96.0), 3.0);
+    float moss = smoothstep(0.45, 0.56, mn + mortar * 0.25 + (1.0 - bevel) * 0.1);
+    vec3 mc = srgb(mix(vec3(0.2, 0.32, 0.09), vec3(0.38, 0.5, 0.16), fm));
+    m.alb = mix(mix(c, srgb(vec3(0.22, 0.22, 0.2)), mortar), mc, moss);
+    m.h = mix(0.05, 0.55 + 0.35 * bevel + 0.2 * (s.h - 0.5), 1.0 - mortar) + moss * 0.15 * fm;
+    m.rough = mix(mix(0.72, 0.95, mortar), 0.95, moss);`,
+  spruce_planks: `m = plankM(uv, vec3(0.28, 0.19, 0.11), vec3(0.38, 0.26, 0.15), 11.0);`,
+  cherry_planks: `m = plankM(uv, vec3(0.72, 0.42, 0.4), vec3(0.86, 0.56, 0.52), 23.0);`,
+  quartz_tiles: `
+    vec2 t = fract(uv * 2.0);
+    vec2 cell = floor(uv * 2.0);
+    vec2 d = min(t, 1.0 - t);
+    float grout = 1.0 - smoothstep(0.008, 0.02, min(d.x, d.y));
+    float n = fbm(uv, vec2(2.0), 5, 0.55, hash(cell) * 9.0);
+    float vein = smoothstep(0.03, 0.0, abs(sin((uv.x + uv.y * 1.7 + n * 1.8) * 6.2832)) * 0.25) * 0.35;
+    vec3 c = vec3(0.93, 0.92, 0.9) * (0.96 + 0.04 * n) - vec3(0.25, 0.24, 0.22) * vein;
+    m.alb = srgb(mix(c, vec3(0.7, 0.69, 0.67), grout)); m.h = 0.8 - grout * 0.6; m.rough = 0.08 + 0.4 * grout;`,
+  paper_lantern: `
+    vec2 d = min(uv, 1.0 - uv);
+    float frame = 1.0 - smoothstep(0.05, 0.07, min(d.x, d.y));
+    float rib = smoothstep(0.02, 0.0, abs(fract(uv.y * 5.0) - 0.5) - 0.47);
+    float n = fbm(uv, vec2(8.0), 4, 0.5, 5.0);
+    float fib = vnoise(uv * vec2(80.0, 20.0), vec2(80.0, 20.0), 3.0);
+    vec2 cc = uv - 0.5;
+    float core = 1.0 - smoothstep(0.0, 0.7, length(cc));
+    vec3 paper = mix(vec3(1.0, 0.55, 0.22), vec3(1.0, 0.82, 0.55), core * 0.8 + 0.2 * n) * (0.9 + 0.1 * fib);
+    float wood = max(frame, rib * 0.8);
+    m.alb = mix(srgb(paper), srgb(vec3(0.24, 0.12, 0.07)), wood);
+    m.emit = (1.0 - wood) * (0.45 + 0.55 * core) * (0.9 + 0.1 * fib);
+    m.h = wood * 0.7 + (1.0 - wood) * (0.3 + 0.05 * fib); m.rough = mix(0.8, 0.6, wood);`,
+  stained_amber: `m = stainedM(uv, vec3(1.0, 0.6, 0.16));`,
+  stained_rose: `m = stainedM(uv, vec3(0.95, 0.35, 0.5));`,
+  stained_azure: `m = stainedM(uv, vec3(0.25, 0.55, 1.0));`,
+  campfire_log: `
+    float f = vnoise(vec2(uv.x * 10.0, uv.y * 2.0), vec2(10.0, 2.0), 5.0);
+    float ridges = abs(f * 2.0 - 1.0);
+    float n = fbm(uv, vec2(4.0), 4, 0.5, 3.0);
+    float char = smoothstep(0.4, 0.7, n);
+    vec3 c = mix(vec3(0.3, 0.2, 0.12), vec3(0.06, 0.05, 0.05), char) * (0.7 + 0.5 * (1.0 - ridges));
+    float ember = smoothstep(0.78, 0.9, n) * smoothstep(0.3, 0.0, ridges);
+    m.alb = srgb(mix(c, vec3(1.0, 0.35, 0.05), ember)); m.emit = ember * 0.8;
+    m.h = pow(1.0 - ridges, 1.5) * 0.7 + 0.2 * n; m.rough = 0.9;`,
+  fire: `
+    float t = 1.0 - uv.y;
+    float n = fbm(vec2(uv.x * 2.0, uv.y * 3.0), vec2(2.0, 3.0), 4, 0.55, 4.0);
+    // several tongues of different heights licking upward
+    float shape = -1.0;
+    for (int k = 0; k < 5; k++) {
+      float fk = float(k);
+      float cx = 0.24 + fk * 0.13 + (hash(vec2(fk, 2.0)) - 0.5) * 0.06 + 0.05 * sin(t * 7.0 + fk * 1.7) * t;
+      float hh = 0.45 + 0.5 * hash(vec2(fk, 5.0)) * (1.0 - abs(fk - 2.0) * 0.18);
+      float w = 0.1 * pow(saturate(1.0 - t / hh), 0.65) + 0.012;
+      shape = max(shape, (w - abs(uv.x - cx)) / w - (n - 0.5) * 0.5 * t);
+    }
+    float base = smoothstep(0.35, 0.0, t) * (0.34 - abs(uv.x - 0.5)) * 5.0;
+    shape = max(shape, base);
+    m.alpha = step(0.0, shape) * step(t, 0.97);
+    float core = saturate(shape * 1.4) * (1.0 - t * 0.8);
+    vec3 c = mix(vec3(1.0, 0.22, 0.03), vec3(1.0, 0.62, 0.18), saturate(shape * 1.8));
+    c = mix(c, vec3(1.0, 0.95, 0.75), core * core);
+    m.alb = srgb(c); m.emit = 0.5 + 0.5 * core; m.rough = 0.5; m.h = 0.5;`,
+  maple_red: `m = mapleM(uv, vec3(0.62, 0.08, 0.05), vec3(0.85, 0.16, 0.07), vec3(0.95, 0.35, 0.1));`,
+  maple_orange: `m = mapleM(uv, vec3(0.85, 0.3, 0.05), vec3(0.97, 0.48, 0.08), vec3(0.98, 0.64, 0.16));`,
+  maple_yellow: `m = mapleM(uv, vec3(0.85, 0.58, 0.08), vec3(0.97, 0.76, 0.18), vec3(0.8, 0.72, 0.2));`,
+  jungle_log: `
+    float warp = fbm(uv, vec2(2.0, 3.0), 3, 0.5, 6.0);
+    float f = vnoise(vec2(uv.x * 14.0 + warp * 3.0, uv.y * 1.0), vec2(14.0, 1.0), 2.0);
+    float ridges = abs(f * 2.0 - 1.0);
+    float n = fbm(uv, vec2(4.0), 4, 0.5, 9.0);
+    float moss = smoothstep(0.62, 0.74, fbm(uv, vec2(3.0, 4.0), 3, 0.5, 13.0));
+    vec3 c = mix(vec3(0.22, 0.15, 0.08), vec3(0.42, 0.3, 0.16), pow(1.0 - ridges, 1.4)) * (0.85 + 0.25 * n);
+    c = mix(c, vec3(0.2, 0.33, 0.12), moss * 0.8);
+    m.alb = srgb(c); m.h = pow(1.0 - ridges, 1.5) * 0.7 + 0.2 * n + moss * 0.1; m.rough = 0.88;`,
+  jungle_leaves: `m = leavesM(uv, 7.0, 0.62, 0.36, vec3(0.5), vec3(0.95));`,
+  acacia_log: `
+    vec4 v = voronoi(uv * vec2(4.0, 2.0), vec2(4.0, 2.0), 5.0, 1.0);
+    float e = smoothstep(0.0, 0.07, v.y - v.x);
+    float n = fbm(uv, vec2(6.0, 3.0), 4, 0.5, 2.0);
+    vec3 bark = mix(vec3(0.34, 0.31, 0.28), vec3(0.46, 0.42, 0.38), v.z) * (0.85 + 0.25 * n);
+    vec3 c = mix(vec3(0.55, 0.28, 0.12), bark, e);
+    m.alb = srgb(c); m.h = e * (0.6 + 0.3 * v.z) + 0.1 * n; m.rough = 0.88;`,
+  acacia_leaves: `m = leavesM(uv, 9.0, 0.22, 0.12, vec3(0.62), vec3(0.95));`,
+  willow_leaves: `
+    float s1, v1, s2, v2, s3, v3;
+    vec2 q = vec2(uv.x, uv.y);
+    float a1 = leafLayer(q, 7.0, 21.0, 0.6, 0.07, s1, v1);
+    float a2 = leafLayer(q, 9.0, 29.0, 0.55, 0.06, s2, v2);
+    float a3 = leafLayer(q, 11.0, 37.0, 0.5, 0.06, s3, v3);
+    float h = max(a1, max(a2 * 0.9, a3 * 0.8));
+    float sh = a1 >= a2 * 0.9 ? s1 : s2;
+    m.alpha = step(0.02, h);
+    m.alb = srgb(mix(vec3(0.42, 0.52, 0.2), vec3(0.62, 0.7, 0.3), sh) * (0.75 + 0.35 * h)); m.h = h; m.rough = 0.55;`,
+  palm_log: `
+    float ring = abs(fract(uv.y * 4.0 + vnoise(vec2(uv.x * 4.0, 0.5), vec2(4.0, 1.0), 3.0) * 0.2) - 0.5);
+    float band = smoothstep(0.42, 0.5, ring);
+    float fib = vnoise(vec2(uv.x * 40.0, uv.y * 6.0), vec2(40.0, 6.0), 5.0);
+    float n = fbm(uv, vec2(4.0), 4, 0.5, 7.0);
+    vec3 c = mix(vec3(0.52, 0.42, 0.3), vec3(0.66, 0.56, 0.42), fib * 0.6 + n * 0.4) * (1.0 - 0.45 * band);
+    m.alb = srgb(c); m.h = 0.6 + 0.2 * fib - 0.5 * band; m.rough = 0.85;`,
+  palm_leaves: `
+    float lum = 0.0;
+    m.alpha = 0.0;
+    for (int k = 0; k < 3; k++) {
+      float fk = float(k);
+      float cy = fract(0.17 + fk * 0.34);
+      float along = uv.x;
+      float spine = abs(uv.y - cy - 0.05 * sin(along * 6.2832 + fk));
+      float leaflet = abs(fract(along * 18.0 + fk * 0.3) - 0.5);
+      float w = 0.13 * (1.0 - leaflet * 1.6) * (0.8 + 0.2 * hash(vec2(floor(along * 18.0), fk)));
+      float lean = (uv.y - cy) * 0.0;
+      if (spine < 0.012) { m.alpha = 1.0; lum = 0.55; }
+      else if (spine < w && leaflet < 0.42) { m.alpha = 1.0; lum = 0.7 + 0.3 * (1.0 - spine / w); }
+      void(lean);
+    }
+    m.alb = srgb(vec3(lum)); m.h = lum; m.rough = 0.5;`.replace('void(lean);', ''),
+  leaf_litter: `
+    float s1, v1, s2, v2;
+    float a1 = lobedLayer(uv, 6.0, 41.0, 0.3, s1, v1);
+    float a2 = lobedLayer(uv, 8.0, 53.0, 0.28, s2, v2);
+    float h = max(a1, a2 * 0.9);
+    float sh = a1 >= a2 * 0.9 ? s1 : s2;
+    float keep = step(0.3, hash(floor(uv * 6.0) + 11.0));
+    m.alpha = step(0.02, a1) * keep + step(0.02, a2) * step(0.35, s2);
+    m.alpha = clamp(m.alpha, 0.0, 1.0);
+    vec3 c = sh < 0.25 ? vec3(0.66, 0.12, 0.06) : sh < 0.5 ? vec3(0.88, 0.42, 0.08) : sh < 0.75 ? vec3(0.9, 0.68, 0.16) : vec3(0.42, 0.26, 0.12);
+    m.alb = srgb(c * (0.75 + 0.3 * h)); m.h = h; m.rough = 0.7;`,
+  lily_pad: `
+    m.alpha = 0.0;
+    for (int k = 0; k < 2; k++) {
+      vec2 c = k == 0 ? vec2(0.36, 0.4) : vec2(0.72, 0.74);
+      float R = k == 0 ? 0.3 : 0.2;
+      vec2 q = uv - c;
+      float r = length(q), a = atan(q.y, q.x) + float(k) * 2.1;
+      float notch = smoothstep(0.02, 0.1, abs(mod(a + 3.1416, 6.2832) - 0.4)) ;
+      if (r < R && notch > 0.5) {
+        m.alpha = 1.0;
+        float vein = smoothstep(0.015, 0.0, abs(sin(a * 7.0)) * r);
+        vec3 g = mix(vec3(0.16, 0.36, 0.1), vec3(0.3, 0.52, 0.16), r / R) * (1.0 - 0.25 * vein);
+        m.alb = srgb(g); m.h = 0.5 + 0.3 * (1.0 - r / R); m.rough = 0.35;
+        if (k == 1 && r < 0.06) { m.alb = srgb(mix(vec3(1.0, 0.72, 0.85), vec3(1.0, 0.95, 0.6), step(r, 0.02))); m.h = 1.0; }
+      }
+    }`,
+  vines: `
+    // strands rooted at the bottom edge (hung upside down), small leaves alternating along each
+    m.alpha = 0.0;
+    float lum = 0.0, leafH = 0.0;
+    float t = 1.0 - uv.y;
+    for (int i = 0; i < 6; i++) {
+      float fi = float(i);
+      float hh = 0.55 + 0.45 * hash(vec2(fi, 5.0));
+      if (t > hh) continue;
+      float cx = (fi + 0.5) / 6.0 + (hash(vec2(fi, 3.0)) - 0.5) * 0.07 + 0.022 * sin(t * 13.0 + fi * 2.0);
+      float d = uv.x - cx;
+      if (abs(d) < 0.007) { m.alpha = 1.0; lum = 0.4; leafH = 0.3; }
+      float seg = t * 16.0 + hash(vec2(fi, 7.0)) * 4.0;
+      float k = floor(seg);
+      if ((k + 0.5) / 16.0 > hh + 0.02) continue;
+      float side = mod(k, 2.0) * 2.0 - 1.0;
+      vec2 q = vec2(d - side * 0.028, (fract(seg) - 0.5) / 16.0);
+      float r = length(q / vec2(0.026, 0.024));
+      if (r < 1.0) { m.alpha = 1.0; lum = (0.55 + 0.3 * (1.0 - r)) * (0.85 + 0.25 * hash(vec2(k, fi))); leafH = 1.0 - r * 0.5; }
+    }
+    m.alb = srgb(vec3(lum)); m.h = 0.3 + 0.6 * leafH; m.rough = 0.55;`,
+  hanging_moss: `
+    float lum; float a = strands(uv, 20.0, 9.0, 0.009, lum);
+    m.alpha = a;
+    m.alb = srgb(mix(vec3(0.38, 0.42, 0.32), vec3(0.58, 0.62, 0.48), lum)); m.h = lum; m.rough = 0.8;`,
+  lavender: `
+    m.alpha = 0.0; m.rough = 0.6;
+    for (int i = 0; i < 6; i++) {
+      float fi = float(i);
+      float x0 = 0.18 + 0.64 * hash(vec2(fi, 3.0));
+      float top = 0.12 + 0.3 * hash(vec2(fi, 5.0));
+      float lean = (hash(vec2(fi, 7.0)) - 0.5) * 0.2;
+      float t = (1.0 - uv.y);
+      float cx = x0 + lean * t;
+      float d = abs(uv.x - cx);
+      if (uv.y > top && d < 0.012) { m.alpha = 1.0; m.alb = srgb(vec3(0.3, 0.44, 0.22)); m.h = 0.5; }
+      if (uv.y > top - 0.02 && uv.y < top + 0.3) {
+        float k = floor((uv.y - top) * 30.0);
+        float bud = step(length(vec2(d * 1.4, fract((uv.y - top) * 30.0) - 0.5) * vec2(1.0, 0.07)), 0.028 * (1.0 - (uv.y - top) * 1.2));
+        if (bud > 0.5) { m.alpha = 1.0; m.alb = srgb(mix(vec3(0.42, 0.28, 0.72), vec3(0.62, 0.48, 0.9), hash(vec2(k, fi)))); m.h = 1.0; }
+      }
+    }`,
+  sunflower: `
+    m.alpha = 0.0; m.rough = 0.6;
+    vec2 c = vec2(0.5, 0.2);
+    float stem = segDist(uv, vec2(0.5, 1.0), vec2(0.5 + 0.02 * sin(uv.y * 5.0), c.y + 0.1));
+    if (stem < 0.022) { m.alpha = 1.0; m.alb = srgb(vec3(0.28, 0.46, 0.14)); m.h = 0.5; }
+    for (int s = 0; s < 3; s++) {
+      float side = s == 1 ? 1.0 : -1.0;
+      vec2 lc = vec2(0.5 + side * 0.12, 0.5 + float(s) * 0.15);
+      vec2 q = uv - lc;
+      float ang = side * 0.5;
+      vec2 r = vec2(cos(ang) * q.x - sin(ang) * q.y, sin(ang) * q.x + cos(ang) * q.y);
+      if (abs(r.x) < 0.13 && abs(r.y) < 0.05 * (1.0 - pow(r.x / 0.13, 2.0))) { m.alpha = 1.0; m.alb = srgb(vec3(0.25, 0.45, 0.13)); m.h = 0.6; }
+    }
+    vec2 p = (uv - c) * vec2(1.0, 1.0);
+    float r = length(p), a = atan(p.y, p.x);
+    float petals = 0.2 + 0.035 * abs(cos(a * 9.0));
+    if (r < petals) { m.alpha = 1.0; m.alb = srgb(mix(vec3(1.0, 0.7, 0.05), vec3(1.0, 0.85, 0.2), r / petals)); m.h = 0.8; }
+    if (r < 0.1) {
+      float seeds = vnoise(vec2(a * 5.0, r * 90.0), vec2(1000.0), 2.0);
+      m.alb = srgb(mix(vec3(0.2, 0.1, 0.03), vec3(0.35, 0.2, 0.06), seeds)); m.h = 1.0 - r * 3.0;
+    }`,
+  cattail: `
+    float lum; float a = blades(uv, 7.0, 13.0, 0.03, 0.0, lum);
+    m.alpha = a; m.alb = srgb(vec3(0.3, 0.45, 0.18) * (0.6 + 0.5 * lum)); m.h = 0.5 + 0.5 * lum; m.rough = 0.6;
+    for (int i = 0; i < 2; i++) {
+      float x0 = i == 0 ? 0.42 : 0.6;
+      float top = i == 0 ? 0.05 : 0.14;
+      if (abs(uv.x - x0) < 0.012 && uv.y > top) { m.alpha = 1.0; m.alb = srgb(vec3(0.32, 0.42, 0.2)); }
+      if (abs(uv.x - x0) < 0.035 && uv.y > top + 0.05 && uv.y < top + 0.28) {
+        float f = vnoise(uv * vec2(40.0, 80.0), vec2(40.0, 80.0), 4.0);
+        m.alpha = 1.0; m.alb = srgb(vec3(0.32, 0.19, 0.09) * (0.8 + 0.3 * f)); m.h = 1.0; m.rough = 0.85;
+      }
+    }`,
+  kelp: `
+    m.alpha = 0.0;
+    for (int i = 0; i < 2; i++) {
+      float fi = float(i);
+      float cx = 0.4 + fi * 0.22 + 0.08 * sin(uv.y * 6.2832 * 2.0 + fi * 2.0);
+      float w = 0.1 + 0.05 * sin(uv.y * 6.2832 * 3.0 + fi);
+      float d = abs(uv.x - cx);
+      if (d < w) {
+        m.alpha = 1.0;
+        float ridge = 1.0 - d / w;
+        m.alb = srgb(mix(vec3(0.18, 0.26, 0.07), vec3(0.4, 0.46, 0.12), ridge) * (0.85 + 0.2 * vnoise(uv * 16.0, vec2(16.0), fi)));
+        m.h = ridge;
+      }
+      vec2 bp = vec2(cx + 0.1, fract(uv.y * 2.0 + fi * 0.5));
+      if (length((vec2(uv.x, fract(uv.y * 2.0 + fi * 0.5)) - vec2(cx + w, 0.5)) * vec2(1.0, 0.5)) < 0.035) { m.alpha = 1.0; m.alb = srgb(vec3(0.5, 0.48, 0.12)); m.h = 1.0; }
+      void(bp);
+    }
+    m.rough = 0.35;`.replace('void(bp);', ''),
+  coral_fan: `
+    // gorgonian sea fan: a perforated sheet with thicker radiating ribs and a scalloped rim
+    vec2 p = uv - vec2(0.5, 1.0);
+    float r = length(p), a = atan(p.x, -p.y);
+    m.alpha = 0.0;
+    float rimR = 0.86 + 0.05 * sin(a * 9.0);
+    if (r < rimR && abs(a) < 1.2 - r * 0.2) {
+      vec4 v = voronoi(uv * 11.0, vec2(11.0), 3.0, 0.9);
+      float holes = smoothstep(0.24, 0.32, v.x);
+      float rib = smoothstep(0.05, 0.0, abs(fract(a * 2.2 + 0.5) - 0.5) * r);
+      m.alpha = step(0.5, max(holes, rib)) * step(0.03, r);
+      m.alb = srgb(mix(vec3(0.7, 0.16, 0.5), vec3(0.95, 0.42, 0.66), r) * (0.8 + 0.3 * rib));
+      m.h = 0.5 + 0.4 * rib;
+    }
+    m.rough = 0.6;`,
+  glow_fern: `
+    float a = 0.0, lum = 0.0, tip = 0.0;
+    float t = 1.0 - uv.y;
+    for (int i = 0; i < 5; i++) {
+      float fi = float(i);
+      float x0 = 0.5 + (fi - 2.0) * 0.07;
+      float lean = (fi - 2.0) * 0.2;
+      float hh = 0.72 + 0.28 * hash(vec2(fi, 19.0));
+      if (t > hh) continue;
+      float cx = x0 + lean * t * t;
+      float serr = 0.5 + 0.5 * abs(sin(t * 50.0 + fi));
+      float ww = (0.09 * (1.0 - t / hh) + 0.01) * serr;
+      float dd = abs(uv.x - cx);
+      if (dd < ww) { a = 1.0; lum = (0.45 + 0.5 * t / hh); tip = smoothstep(0.55, 1.0, t / hh) + step(dd, 0.007) * 0.4; }
+    }
+    m.alpha = a;
+    m.alb = srgb(mix(vec3(0.05, 0.28, 0.3) * lum, vec3(0.4, 1.0, 0.95), saturate(tip)));
+    m.emit = saturate(tip) * 0.9 + 0.08; m.h = 0.5 + 0.5 * lum; m.rough = 0.5;`,
+  red_mushroom: `
+    m.alpha = 0.0; m.rough = 0.5;
+    if (abs(uv.x - 0.5) < 0.07 && uv.y > 0.5) { m.alpha = 1.0; m.alb = srgb(vec3(0.88, 0.84, 0.76)); m.h = 0.5; }
+    vec2 q = (uv - vec2(0.5, 0.52)) / vec2(0.34, 0.24);
+    if (length(q) < 1.0 && q.y < 0.1) {
+      float spot = step(0.78, vnoise(uv * 20.0, vec2(20.0), 5.0));
+      m.alpha = 1.0; m.alb = srgb(mix(vec3(0.75, 0.08, 0.05), vec3(0.97, 0.94, 0.88), spot)); m.h = 1.0 - length(q) * 0.5;
+      m.rough = 0.35;
+    }`,
 };
 
 function oreMacro(body) {
@@ -735,7 +1298,7 @@ export function generateBlockTextures(gl, res, aniso) {
     gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
   }
   // Per-layer uniform data: (pom depth, flags, porosity, emission)
-  const layerInfo = new Float32Array(64 * 4);
+  const layerInfo = new Float32Array(128 * 4);
   info.forEach((ti, i) => { layerInfo.set([ti.pom, ti.f, ti.por, ti.em], i * 4); });
   return { albedo, normal, material, layerInfo, res, count: L };
 }

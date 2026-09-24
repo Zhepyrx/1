@@ -96,6 +96,18 @@ export class MeshPool {
     return out;
   }
 
+  // Sub-ranges of an upload (list of allocations covering quads [0, n)) for quads [start, start + count).
+  slice(allocs, start, count) {
+    const out = [];
+    let base = 0;
+    for (const a of allocs) {
+      const s = Math.max(start, base), e = Math.min(start + count, base + a.count);
+      if (e > s) out.push({ page: a.page, start: a.start + (s - base), count: e - s });
+      base += a.count;
+    }
+    return out;
+  }
+
   release(allocs) {
     for (const a of allocs) { this.pages[a.page].release(a.start, a.count); this.totalQuads -= a.count; }
   }

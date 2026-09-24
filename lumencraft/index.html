@@ -115,7 +115,56 @@ input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--sun); }
 .pal-item img { width: 44px; height: 44px; }
 .pal-item span { font-size: 11px; color: var(--muted); text-align: center; line-height: 1.25; }
 .pal-item.glow img { filter: drop-shadow(0 0 8px rgba(255, 200, 120, 0.55)); }
-@media (prefers-reduced-motion: reduce) { #title .card { animation: none; } #boot { transition: none; } }
+/* ---- biome title card */
+#biome-title { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); text-align: center; opacity: 0; transition: opacity 1.4s ease; pointer-events: none; padding-inline: 16px; width: max-content; max-width: calc(100vw - 32px); }
+#biome-title.show { opacity: 1; }
+#biome-title .kicker { display: block; font-size: 11px; letter-spacing: 0.32em; text-transform: uppercase; color: var(--sun); margin-bottom: 6px; }
+#biome-title h2 { margin: 0; font-family: var(--display); font-weight: 400; font-size: clamp(30px, 5vw, 54px); letter-spacing: 0.08em; text-shadow: 0 2px 28px rgba(0,0,0,0.55); }
+#biome-title .rule { display: block; width: 120px; height: 1px; margin: 12px auto 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.7), transparent); }
+#biome-chip { font-size: 12px; color: var(--muted); letter-spacing: 0.04em; border-left: 1px solid var(--line); padding-left: 10px; }
+
+/* ---- atlas */
+#map { position: fixed; inset: 0; z-index: 36; display: grid; place-items: center; background: rgba(5, 7, 10, 0.6); backdrop-filter: blur(6px); padding: 16px; }
+#map .map-panel { width: min(980px, 100%); max-height: calc(100vh - 32px); overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 20px; display: grid; gap: 14px; backdrop-filter: blur(18px); }
+#map h2 { font-family: var(--display); font-weight: 400; font-size: 28px; letter-spacing: 0.04em; margin: 0; }
+.map-tools { display: flex; gap: 6px; align-items: center; }
+.map-tools button:not(.btn) { width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--line-strong); background: rgba(255,255,255,0.05); cursor: pointer; font-size: 18px; }
+.map-body { display: grid; grid-template-columns: minmax(0, 576px) minmax(200px, 1fr); gap: 18px; align-items: start; }
+#map-canvas { width: 100%; aspect-ratio: 1; border-radius: 12px; border: 1px solid var(--line); cursor: crosshair; image-rendering: pixelated; display: block; }
+.map-side { display: grid; gap: 12px; min-width: 0; }
+.map-side h3 { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); margin: 6px 0 0; font-weight: 600; }
+#map-legend { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; font-size: 12px; color: var(--muted); }
+#map-legend li { display: flex; align-items: center; gap: 7px; min-width: 0; }
+#map-legend li.found { color: var(--text); }
+#map-legend li.found::after { content: '✓'; color: var(--sun); font-size: 11px; }
+#map-legend i { width: 11px; height: 11px; border-radius: 3px; flex: none; }
+#map-travel { width: 100%; }
+#map-travel:disabled { opacity: 0.5; cursor: default; }
+@media (max-width: 760px) { .map-body { grid-template-columns: 1fr; } }
+
+/* ---- photo mode */
+#photo { position: fixed; left: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 12; pointer-events: none; }
+#photo .photo-panel { padding: 12px 14px; border-radius: 12px; background: rgba(6, 8, 12, 0.55); border: 1px solid var(--line); backdrop-filter: blur(8px); display: grid; gap: 6px; font-size: 12.5px; color: #d5dde2; max-width: calc(100vw - 32px); }
+#photo strong { font-family: var(--display); font-weight: 400; font-size: 18px; letter-spacing: 0.06em; color: var(--text); }
+#photo .keys { font-size: 12px; gap: 4px 12px; }
+#photo-status { font-family: var(--mono); font-size: 11.5px; color: var(--sun); }
+
+/* ---- journal */
+.journal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.journal-grid span { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); font-size: 12.5px; color: var(--muted); background: rgba(255,255,255,0.02); }
+.journal-grid span.found { color: var(--text); border-color: rgba(242,197,124,0.4); background: rgba(242,197,124,0.08); }
+.journal-grid span.found::before { content: '✓ '; color: var(--sun); }
+.progress { font-family: var(--mono); font-size: 12px; color: var(--sun); }
+input[type=text] { background: rgba(255,255,255,0.05); color: var(--text); border: 1px solid var(--line-strong); border-radius: 8px; padding: 8px 10px; font: inherit; font-size: 13px; min-width: 0; width: 100%; }
+
+/* ---- palette tabs and search */
+.pal-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pal-tools input { flex: 1 1 180px; }
+.pal-tabs { display: flex; flex-wrap: wrap; gap: 4px; }
+.pal-tabs button { appearance: none; border: 1px solid var(--line); background: transparent; color: var(--muted); padding: 6px 11px; border-radius: 999px; cursor: pointer; font-size: 12.5px; font-weight: 600; }
+.pal-tabs button[aria-pressed="true"] { color: var(--sun); border-color: rgba(242,197,124,0.5); background: rgba(242,197,124,0.1); }
+
+@media (prefers-reduced-motion: reduce) { #title .card { animation: none; } #boot { transition: none; } #biome-title { transition: none; } }
 </style>
 <!--LC:HEAD-END-->
 </head>
@@ -135,11 +184,14 @@ input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--sun); }
   <div class="card">
     <div class="eyebrow">Voxel sandbox · real-time light</div>
     <h1>Lumencraft</h1>
-    <p class="lede">Explore and build in an endless voxel world lit by a physical sky, drifting volumetric clouds, soft sun shadows, reflective water and light that spills from every torch.</p>
+    <p class="lede">Explore and build in an endless voxel world lit by a physical sky and drifting volumetric clouds. Wander twenty-four biomes, from autumn maple woods and coral reefs to glowing Lumen Groves and smoking volcanoes, alive with deer, foxes, birds and fish.</p>
     <div class="actions">
+      <button class="btn primary" id="btn-continue" hidden>Continue</button>
       <button class="btn primary" id="btn-enter">Enter world</button>
+      <button class="btn" id="btn-title-new">New world…</button>
       <button class="btn" id="btn-title-settings">Settings</button>
     </div>
+    <p class="hint" id="save-note" hidden></p>
     <div class="quality">
       <span class="label">Graphics quality</span>
       <div class="quality-pick" role="group" aria-label="Graphics quality">
@@ -150,14 +202,15 @@ input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--sun); }
       </div>
       <span class="hint">Dynamic resolution renders fewer pixels when needed and a temporal upscaler rebuilds full detail, so the frame rate stays at your target.</span>
     </div>
-    <div class="hint"><kbd>W A S D</kbd> move · <kbd>Space</kbd> jump, double-tap to fly · <kbd>Shift</kbd> sprint · click to break · right-click to place · <kbd>E</kbd> blocks · <kbd>T</kbd> pause time · <kbd>R</kbd> weather · <kbd>F3</kbd> stats</div>
+    <div class="hint"><kbd>W A S D</kbd> move · <kbd>Space</kbd> jump, double-tap to fly · <kbd>Shift</kbd> sprint · click to break · right-click to place · <kbd>E</kbd> blocks · <kbd>Tab</kbd> atlas · <kbd>P</kbd> photo mode · <kbd>F2</kbd> screenshot · <kbd>Ctrl Z</kbd> undo</div>
     <p class="touch-note">Lumencraft is played with a keyboard and mouse. On this device the world renders, but you can't move around.</p>
   </div>
 </section>
 
 <div id="hud" hidden>
   <div id="crosshair"></div>
-  <div id="clockchip"><span id="clock">07:15</span><span id="cond">Clear</span></div>
+  <div id="clockchip"><span id="clock">07:15</span><span id="cond">Clear</span><span id="biome-chip"></span></div>
+  <div id="biome-title"><span class="kicker"></span><h2></h2><span class="rule"></span></div>
   <pre id="perf" hidden></pre>
   <div id="toast" role="status" aria-live="polite"></div>
   <div id="itemname"></div>
@@ -169,11 +222,30 @@ input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--sun); }
     <h2>Paused</h2>
     <div class="menu">
       <button class="btn primary" id="btn-resume">Resume</button>
+      <button class="btn" id="btn-map">Atlas</button>
+      <button class="btn" id="btn-journal">Journal</button>
+      <button class="btn" id="btn-photo">Photo mode</button>
       <button class="btn" id="btn-settings">Settings</button>
       <button class="btn" id="btn-controls">Controls</button>
-      <button class="btn" id="btn-newworld">New world</button>
+      <button class="btn" id="btn-newworld">New world…</button>
     </div>
-    <p class="muted">Your settings are saved in this browser. Worlds are generated from a seed and are not saved.</p>
+    <p class="muted" id="save-status">Your world, edits and discoveries are saved in this browser.</p>
+  </div>
+
+  <div class="panel" data-panel="journal" hidden>
+    <div class="panel-head"><h2>Journal</h2><button class="btn" data-back>Done</button></div>
+    <div class="group"><h3>Biomes discovered <span class="progress" id="j-biome-count"></span></h3><div class="journal-grid" id="j-biomes"></div></div>
+    <div class="group"><h3>Wildlife spotted <span class="progress" id="j-creature-count"></span></h3><div class="journal-grid" id="j-creatures"></div></div>
+    <p class="muted">Open the atlas with <kbd>Tab</kbd> to find biomes you haven't visited, then click the map to travel there.</p>
+  </div>
+
+  <div class="panel" data-panel="newworld" hidden>
+    <div class="panel-head"><h2>New world</h2><button class="btn" data-back>Cancel</button></div>
+    <div class="group">
+      <div class="row"><label for="nw-seed">Seed</label><div class="ctl"><input type="text" id="nw-seed" placeholder="Leave empty for a random world" autocomplete="off"></div></div>
+      <p class="muted">The same seed always grows the same world. Creating a new world replaces the one saved in this browser.</p>
+      <div class="actions"><button class="btn primary" id="nw-create">Create world</button></div>
+    </div>
   </div>
 
   <div class="panel" data-panel="settings" hidden>
@@ -188,6 +260,8 @@ input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--sun); }
       <div class="row"><label for="s-sharpen">Sharpening</label><div class="ctl"><input type="range" id="s-sharpen" min="0" max="100" step="5"><output data-out="s-sharpen" data-fmt="pct"></output></div></div>
       <div class="row"><label for="s-gi">Bounce light</label><div class="ctl"><input type="checkbox" id="s-gi"></div></div>
       <div class="row"><label for="s-mblur">Motion blur</label><div class="ctl"><input type="checkbox" id="s-mblur"></div></div>
+      <div class="row"><label for="s-flare">Lens flare</label><div class="ctl"><input type="checkbox" id="s-flare"></div></div>
+      <div class="row"><label for="s-cine">Cinematic mode (letterbox, depth of field)</label><div class="ctl"><input type="checkbox" id="s-cine"></div></div>
       <div class="row"><label for="s-grain">Film grain</label><div class="ctl"><input type="checkbox" id="s-grain"></div></div>
     </div>
     <div class="group">
@@ -201,6 +275,7 @@ input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--sun); }
       <div class="row"><label for="s-time">Time of day</label><div class="ctl"><input type="range" id="s-time" min="0" max="23.75" step="0.25"><output data-out="s-time" data-fmt="time"></output></div></div>
       <div class="row"><label for="s-cycle">Day cycle runs</label><div class="ctl"><input type="checkbox" id="s-cycle"></div></div>
       <div class="row"><label for="s-weather">Weather</label><div class="ctl"><select id="s-weather"><option value="auto">Changes naturally</option><option value="clear">Always clear</option><option value="rain">Rain</option></select></div></div>
+      <div class="row"><label for="s-creatures">Wildlife</label><div class="ctl"><input type="checkbox" id="s-creatures"></div></div>
     </div>
     <div class="group">
       <h3>Sound</h3>
@@ -219,6 +294,11 @@ input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--sun); }
       <kbd>Mouse</kbd><span>Look · left-click breaks · right-click places · middle-click picks</span>
       <kbd>1–9</kbd><span>Choose a hotbar slot (or scroll)</span>
       <kbd>E</kbd><span>Open the block palette</span>
+      <kbd>Tab</kbd><span>Atlas: find biomes and travel</span>
+      <kbd>P</kbd><span>Photo mode (free camera, depth of field, letterbox)</span>
+      <kbd>F2</kbd><span>Save a screenshot</span>
+      <kbd>Ctrl Z / Ctrl Y</kbd><span>Undo / redo block changes</span>
+      <kbd>H</kbd><span>Return to your home point (Shift+H sets it here)</span>
       <kbd>T</kbd><span>Pause or resume the day cycle</span>
       <kbd>[ ]</kbd><span>Scrub time of day backward / forward</span>
       <kbd>R</kbd><span>Cycle weather: natural, clear, rain</span>
@@ -226,6 +306,7 @@ input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--sun); }
       <kbd>F1</kbd><span>Hide the HUD for screenshots</span>
       <kbd>F3</kbd><span>Performance stats</span>
       <kbd>M</kbd><span>Mute</span>
+      <kbd>J</kbd><span>Journal</span>
       <kbd>Esc</kbd><span>Pause</span>
     </div>
   </div>
@@ -234,8 +315,37 @@ input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--sun); }
 <div id="palette" hidden>
   <div class="panel">
     <div class="panel-head"><h2 style="font-family: var(--display); font-weight: 400; font-size: 28px; margin: 0; letter-spacing: 0.04em;">Blocks</h2><button class="btn" id="palette-close">Close</button></div>
-    <p class="muted">Choose a block for the selected hotbar slot.</p>
+    <div class="pal-tools"><input type="text" id="palette-search" placeholder="Search blocks" autocomplete="off" aria-label="Search blocks"><div class="pal-tabs" id="palette-tabs"></div></div>
     <div id="palette-grid"></div>
+  </div>
+</div>
+<div id="map" hidden>
+  <div class="map-panel">
+    <div class="panel-head"><h2>Atlas</h2><div class="map-tools"><button id="map-zoom-in" aria-label="Zoom in">+</button><button id="map-zoom-out" aria-label="Zoom out">−</button><button class="btn" id="map-close">Close</button></div></div>
+    <div class="map-body">
+      <canvas id="map-canvas" width="576" height="576" aria-label="World map"></canvas>
+      <div class="map-side">
+        <p id="map-info" class="muted"></p>
+        <button class="btn primary" id="map-travel" disabled>Choose a destination</button>
+        <h3>Biomes</h3>
+        <ul id="map-legend"></ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="photo" hidden>
+  <div class="photo-panel">
+    <strong>Photo mode</strong>
+    <div class="keys">
+      <kbd>WASD Space C</kbd><span>Fly the camera · Shift for speed</span>
+      <kbd>Scroll</kbd><span>Focus distance (Alt+scroll: aperture)</span>
+      <kbd>Z / X</kbd><span>Narrower / wider field of view</span>
+      <kbd>[ ] − =</kbd><span>Time of day · exposure</span>
+      <kbd>L</kbd><span>Letterbox</span>
+      <kbd>F2</kbd><span>Capture · <kbd>P</kbd> or <kbd>Esc</kbd> to leave</span>
+    </div>
+    <span id="photo-status"></span>
   </div>
 </div>
 <!--LC:BODY-END-->

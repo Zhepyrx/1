@@ -172,7 +172,7 @@ void main() {
     vec3 wp = rel + uCamPos;
     float den = fogDensity(wp);
     float vis = shadowFast(rel, t) * cloudShadowAt(wp);
-    vec3 S = den * (uLightColor * phase * vis + amb);
+    vec3 S = den * (uLightColor * phase * vis + amb) * uFogTint;
     float stepT = exp(-den * dt);
     acc += T * S * (1.0 - stepT) / max(den, 1e-7);
     T *= stepT;
@@ -184,7 +184,7 @@ export const lightingFS = HEADER + UTIL + FRAME + ATMOS_SAMPLE + CLOUD_SAMPLE + 
 uniform sampler2D uG0, uG1, uG2, uDepth, uAO, uVol, uHistory;
 uniform float uCloudBottom;
 uniform vec2 uOutRes;
-uniform float uSSR, uSSRSteps, uVolMax, uFlicker, uHasHistory;
+uniform float uSSR, uSSRSteps, uVolMax, uFlicker, uHasHistory, uContact;
 uniform int uDebug;
 uniform vec3 uCamFwd;
 layout(location = 0) out vec4 oColor;
@@ -200,6 +200,24 @@ float caustics(vec2 p, float t) {
     q = q * 1.9 + 3.1;
   }
   return c;
+}
+
+// Screen-space contact shadows: a short march toward the light through the depth buffer catches the
+// fine occlusion (grass blades, creatures, block edges) that shadow-map texels are too coarse for.
+float contactShadow(vec3 rel, vec3 N, vec3 L, float viewZ, float noise) {
+  float len = mix(0.18, 0.9, saturate(viewZ / 28.0));
+  vec3 p0 = rel + N * (0.015 + viewZ * 0.0015);
+  for (int i = 0; i < 10; i++) {
+    float t = (float(i) + noise) / 10.0 * len;
+    vec3 q = p0 + L * t;
+    vec4 c = uVPnj * vec4(q, 1.0);
+    vec2 suv = c.xy / c.w * 0.5 + 0.5;
+    if (suv.x < 0.0 || suv.y < 0.0 || suv.x > 1.0 || suv.y > 1.0) break;
+    float sz = linearDepth(texture(uDepth, suv).r);
+    float diff = c.w - sz;
+    if (diff > 0.012 + viewZ * 0.002 && diff < 0.35 + viewZ * 0.01) return 0.0;
+  }
+  return 1.0;
 }
 
 vec4 ssrHistory(vec3 p0, vec3 R) {
@@ -254,7 +272,7 @@ vec3 surfaceAtmo(vec3 col, vec3 rel, vec3 rd, float dist, vec2 uv) {
     vec3 pm = uCamPos + rel * ((uVolMax + dist) * 0.5 / dist);
     float den = fogDensity(pm);
     float T2 = exp(-den * extra);
-    vec3 fogC = irradiance(vec3(0.0, 1.0, 0.0)) / PI + uLightColor * mix(hgPhase(dot(rd, uLightDir), 0.7), 1.0 / (4.0 * PI), 0.3) * cloudShadowAt(pm);
+    vec3 fogC = (irradiance(vec3(0.0, 1.0, 0.0)) / PI + uLightColor * mix(hgPhase(dot(rd, uLightDir), 0.7), 1.0 / (4.0 * PI), 0.3) * cloudShadowAt(pm)) * uFogTint;
     col = col * T2 + fogC * (1.0 - T2);
   }
   float Ta = exp(-dist / mix(2600.0, 600.0, uRain));
@@ -297,13 +315,15 @@ void main() {
   vec3 V = -rel / dist;
   vec4 g0 = texelFetch(uG0, px, 0), g1 = texelFetch(uG1, px, 0), g2 = texelFetch(uG2, px, 0);
   vec3 albedo = g0.rgb;
-  float metal = g0.a;
+  float coolL = g0.a;
   vec3 N = octDecode(g1.xy);
   float rough = max(g1.z, 0.03);
   int bits = int(g1.w + 0.5);
   int nIdx = bits & 7;
   bool foliage = (bits & 8) != 0, plant = (bits & 16) != 0, wetSurf = (bits & 32) != 0;
-  vec3 Ng = faceNormal(nIdx);
+  float metal = float((bits >> 6) & 3) / 3.0;
+  // entities (bit 256) have smooth geometry: their shading normal is also the geometric normal
+  vec3 Ng = (bits & 256) != 0 ? N : faceNormal(nIdx);
   float skyL = g2.r, blkL = g2.g, vao = g2.b, packed = g2.a;
   float emissive = packed > 0.51 ? saturate((packed - 0.54) / 0.46) * 16.0 : 0.0;
   float pshadow = packed > 0.51 ? 1.0 : saturate(packed / 0.48);
@@ -320,6 +340,7 @@ void main() {
   if ((NoLg > -0.02 || foliage || plant) && L.y > -0.03) {
     cs = cloudShadowAt(wp);
     sh = shadowSample(rel, plant ? vec3(0.0) : Ng, plant ? 1.0 : NoLg, viewZ, noise, true, thick) * pshadow * cs;
+    if (uContact > 0.5 && sh > 0.02 && viewZ < 28.0) sh *= mix(contactShadow(rel, Ng, L, viewZ, noise), 1.0, smoothstep(18.0, 28.0, viewZ));
   }
   vec3 F0 = mix(vec3(0.04), albedo, metal);
   vec3 diffC = albedo * (1.0 - metal);
@@ -348,9 +369,13 @@ void main() {
   vec3 E = irradiance((foliage || plant) ? normalize(N + vec3(0.0, 0.8, 0.0)) : N) * skyVis;
   if (foliage) E *= 1.25;
   vec3 ambient = diffC / PI * E * ao;
+  // light scattering between blades and leaves picks up their colour (multiple scattering)
+  if (foliage || plant) ambient /= 1.0 - 0.8 * saturate(albedo * 2.2);
   float blv = blkL * 15.0;
   float bl = 7.0 * exp2((blv - 15.0) * 0.62) * smoothstep(0.0, 2.0, blv);
-  vec3 blockE = vec3(1.0, 0.54, 0.24) * bl * uFlicker;
+  float clv = coolL * 15.0;
+  float bc = 5.5 * exp2((clv - 15.0) * 0.6) * smoothstep(0.0, 2.0, clv);
+  vec3 blockE = vec3(1.0, 0.54, 0.24) * bl * uFlicker + COOL_LIGHT * bc * (0.88 + 0.12 * sin(uTime * 0.9 + wp.x * 0.21 + wp.z * 0.17));
   ambient += diffC / PI * blockE * mix(ao, 1.0, 0.3);
   ambient += diffC * 0.0005 * ao;
   ambient += diffC * aoGI.rgb * vao;
@@ -539,10 +564,68 @@ void main() {
   o = vec4(c / 16.0 * uWeight, 1.0);
 }`;
 
+// Sun visibility for the lens flare: how much of the sun's disc is unoccluded by terrain and cloud,
+// eased over time so the flare fades rather than pops.
+export const sunVisFS = HEADER + UTIL + FRAME + CLOUD_SAMPLE + /* glsl */`
+uniform sampler2D uDepth, uPrevVis;
+uniform vec2 uSunUV, uSunRad;
+uniform float uDt, uReset;
+out vec4 o;
+void main() {
+  float v = 0.0;
+  for (int i = 0; i < 32; i++) {
+    vec2 uv = uSunUV + vogel(i, 32, 0.0) * uSunRad;
+    bool inside = uv.x > 0.0 && uv.y > 0.0 && uv.x < 1.0 && uv.y < 1.0;
+    v += inside && textureLod(uDepth, uv, 0.0).r >= 1.0 ? 1.0 : 0.0;
+  }
+  v /= 32.0;
+  v *= cloudsAt(uSunDir).a;
+  float prev = texelFetch(uPrevVis, ivec2(0), 0).r;
+  if (uReset > 0.5 || !(prev >= 0.0)) prev = v;
+  o = vec4(mix(prev, v, 1.0 - exp(-uDt * 10.0)), 0.0, 0.0, 1.0);
+}`;
+
+// Depth of field (photo mode / cinematic): circle of confusion from depth, gathered over a golden-angle
+// disc at half resolution with scatter-as-gather weights so bokeh keeps its shape.
+export const dofFS = HEADER + UTIL + /* glsl */`
+uniform sampler2D uSrc, uDepth;
+uniform vec2 uDstRes;
+uniform float uFocus, uAperture, uNear, uFar, uMaxCoC;
+out vec4 o;
+float lin(float d) { return uNear * uFar / (uFar - d * (uFar - uNear)); }
+float coc(vec2 uv) {
+  float d = textureLod(uDepth, uv, 0.0).r;
+  float z = d >= 1.0 ? 1e4 : lin(d);
+  return clamp(uAperture * abs(1.0 / uFocus - 1.0 / z) * uDstRes.y, 0.0, uMaxCoC) * sign(z - uFocus);
+}
+void main() {
+  vec2 uv = gl_FragCoord.xy / uDstRes;
+  float c0 = coc(uv);
+  vec3 acc = textureLod(uSrc, uv, 0.0).rgb;
+  float wsum = 1.0;
+  float r0 = abs(c0);
+  for (int i = 0; i < 40; i++) {
+    vec2 off = vogel(i, 40, 0.0) * uMaxCoC;
+    vec2 suv = uv + off / uDstRes;
+    float cs = coc(suv);
+    float d = length(off);
+    // a sample contributes if its own blur reaches this pixel; background can't bleed over sharp foreground
+    float reach = abs(cs);
+    float w = saturate(reach - d + 1.0);
+    if (cs > 0.0 && c0 < 0.0) w *= saturate(1.0 - abs(c0) / max(reach, 1e-3));
+    vec3 col = textureLod(uSrc, suv, 0.0).rgb;
+    w *= 1.0 + 2.0 * smoothstep(1.5, 6.0, luma(col));
+    acc += col * w; wsum += w;
+  }
+  o = vec4(acc / wsum, saturate(r0 / 2.0));
+}`;
+
 export const compositeFS = HEADER + UTIL + /* glsl */`
-uniform sampler2D uSrc, uBloom, uExposure, uDepth;
+uniform sampler2D uSrc, uBloom, uExposure, uDepth, uSunVis, uDof;
 uniform mat4 uInvVP, uPrevVP;
-uniform float uMotionBlur;
+uniform float uMotionBlur, uFlare, uDofOn, uLetterbox, uChroma;
+uniform vec2 uSunUV;
+uniform vec3 uFlareCol;
 uniform vec2 uOutRes;
 uniform float uBloomStr, uSharpen, uVignette, uGrain, uTime, uUnderwater, uSaturation, uContrast, uPurkinje;
 uniform int uFrame;
@@ -559,7 +642,36 @@ vec3 tonemap(vec3 c) {
   y = mix(vec3(ly), y, 1.1 * uSaturation);
   return clamp(y, 0.0, 1.0);
 }
+vec3 hue(float h) { return saturate(abs(fract(h + vec3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0); }
 vec3 fetch(ivec2 p) { return texelFetch(uSrc, clamp(p, ivec2(0), ivec2(uOutRes) - 1), 0).rgb; }
+// Physically placed lens flare: ghosts mirrored through the image centre, a halo and a faint
+// anamorphic streak, all scaled by how much of the sun is visible.
+vec3 lensFlare(vec2 uv) {
+  float vis = texelFetch(uSunVis, ivec2(0), 0).r * uFlare;
+  if (vis < 0.002) return vec3(0.0);
+  vec2 asp = vec2(uOutRes.x / uOutRes.y, 1.0);
+  vec2 s = uSunUV - 0.5, p = uv - 0.5;
+  vec3 acc = vec3(0.0);
+  for (int i = 0; i < 7; i++) {
+    float fi = float(i);
+    float k = i == 0 ? -0.35 : i == 1 ? -0.72 : i == 2 ? -1.05 : i == 3 ? 0.42 : i == 4 ? -1.45 : i == 5 ? 0.68 : -0.2;
+    float size = i == 0 ? 0.05 : i == 1 ? 0.11 : i == 2 ? 0.035 : i == 3 ? 0.03 : i == 4 ? 0.16 : i == 5 ? 0.02 : 0.018;
+    vec3 tint = hue(0.08 + fi * 0.13) * 0.7 + 0.3;
+    vec2 c = s * k;
+    vec2 q = (p - c) * asp;
+    // hexagonal aperture ghosts
+    vec2 aq = abs(q);
+    float hex = max(aq.x * 0.866 + aq.y * 0.5, aq.y);
+    float g = smoothstep(size, size * 0.72, hex) * (0.35 + 0.65 * smoothstep(size * 0.2, size, hex));
+    acc += tint * g * (i == 4 ? 0.25 : 0.55);
+  }
+  float r = length(p * asp - s * asp * -0.9);
+  acc += hue(fract(r * 3.0)) * smoothstep(0.02, 0.0, abs(r - 0.42)) * 0.08;
+  vec2 d = (p - s) * asp;
+  acc += vec3(0.7, 0.8, 1.0) * exp(-abs(d.y) * 260.0) * exp(-abs(d.x) * 2.2) * 0.35;
+  acc += uFlareCol * exp(-dot(d, d) * 90.0) * 0.18;
+  return acc * uFlareCol * vis;
+}
 void main() {
   ivec2 px = ivec2(gl_FragCoord.xy);
   vec2 uv = gl_FragCoord.xy / uOutRes;
@@ -569,6 +681,12 @@ void main() {
     uv += w;
   }
   vec3 c = fetch(px);
+  if (uChroma > 0.0) {
+    // lateral chromatic aberration toward the frame edges
+    vec2 dc = (uv - 0.5) * uChroma * 0.0022;
+    c.r = texture(uSrc, uv + dc).r;
+    c.b = texture(uSrc, uv - dc).b;
+  }
   // camera motion blur along the reprojected screen velocity (static world)
   if (uMotionBlur > 0.0) {
     float d = texture(uDepth, uv).r;
@@ -596,10 +714,15 @@ void main() {
   vec3 sharp = (pc + wgt * (pn + ps + pe + pw)) / (1.0 + 4.0 * wgt);
   sharp = clamp(sharp, 0.0, 0.9999);
   c = sharp / (1.0 - sharp);
+  if (uDofOn > 0.5) {
+    vec4 dof = texture(uDof, uv);
+    c = mix(c, dof.rgb, smoothstep(0.1, 0.6, dof.a));
+  }
   float exposure = texelFetch(uExposure, ivec2(0), 0).r;
   vec3 bloom = texture(uBloom, uv).rgb;
   c = mix(c, bloom, uBloomStr);
   c *= exposure;
+  c += lensFlare(uv);
   // scotopic (night) vision: blue shift and desaturation in very low light
   float lum = luma(c);
   float scot = saturate(1.0 - lum / 0.03) * uPurkinje;
@@ -611,6 +734,11 @@ void main() {
   float g = hash12(gl_FragCoord.xy + fract(uTime * 13.7) * 311.0) - 0.5;
   m += g * uGrain * (1.0 - m) * m * 2.0;
   m += (ign(gl_FragCoord.xy + float(uFrame % 32) * 7.1) - 0.5) / 255.0;
+  // cinematic 2.39:1 letterbox
+  if (uLetterbox > 0.0) {
+    float bar = (1.0 - (uOutRes.x / 2.39) / uOutRes.y) * 0.5 * uLetterbox;
+    if (uv.y < bar || uv.y > 1.0 - bar) m = vec3(0.0);
+  }
   o = vec4(m, 1.0);
 }`;
 

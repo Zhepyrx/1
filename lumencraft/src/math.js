@@ -142,6 +142,19 @@ export function aabbInFrustum(planes, minX, minY, minZ, maxX, maxY, maxZ) {
   return true;
 }
 
+// 0: outside, 1: intersecting, 2: fully inside
+export function aabbFrustumClass(planes, minX, minY, minZ, maxX, maxY, maxZ) {
+  let inside = 2;
+  for (let i = 0; i < planes.length; i++) {
+    const p = planes[i];
+    const px = p[0] > 0 ? maxX : minX, py = p[1] > 0 ? maxY : minY, pz = p[2] > 0 ? maxZ : minZ;
+    if (p[0] * px + p[1] * py + p[2] * pz + p[3] < 0) return 0;
+    const nx = p[0] > 0 ? minX : maxX, ny = p[1] > 0 ? minY : maxY, nz = p[2] > 0 ? minZ : maxZ;
+    if (p[0] * nx + p[1] * ny + p[2] * nz + p[3] < 0) inside = 1;
+  }
+  return inside;
+}
+
 export function halton(i, b) {
   let f = 1, r = 0;
   while (i > 0) { f /= b; r += f * (i % b); i = Math.floor(i / b); }

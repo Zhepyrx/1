@@ -44,6 +44,11 @@ export class Audio {
     this.rainLow = this.loop(pink, 'lowpass', 500, 0.5, 0);
     // water lapping
     this.water = this.loop(pink, 'lowpass', 700, 0.9, 0);
+    // biome beds: jungle insects, volcanic rumble, campfire roar
+    this.insects = this.loop(white, 'bandpass', 5200, 3.5, 0);
+    this.rumble = this.loop(pink, 'lowpass', 70, 0.7, 0);
+    this.fire = this.loop(pink, 'bandpass', 900, 0.6, 0);
+    this.frogTimer = 2; this.chimeTimer = 3; this.crackleTimer = 0.5;
     this.enabled = true;
   }
 
@@ -87,6 +92,89 @@ export class Audio {
       if (s.day < 0.35 && s.rain < 0.3 && !s.underwater && s.altitude < 120) this.cricket();
     }
     if (s.thunder) this.thunder();
+    const a = s.amb ?? {};
+    const quiet = s.underwater ? 0.1 : 1;
+    // jungle insects pulse slowly; volcanic ground rumbles; fires roar softly
+    this.insects.g.gain.setTargetAtTime((a.jungle ?? 0) * 0.018 * (0.6 + 0.4 * Math.sin(now * 2.1)) * quiet * (1 - s.rain), now, 0.4);
+    this.rumble.g.gain.setTargetAtTime((a.volcanic ?? 0) * 0.35 * quiet, now, 0.6);
+    this.fire.g.gain.setTargetAtTime((s.fire ?? 0) * 0.05 * (0.7 + 0.3 * Math.sin(now * 5.3)) * quiet, now, 0.15);
+    // frogs in swamps (more at night)
+    this.frogTimer -= dt;
+    if (this.frogTimer < 0) {
+      this.frogTimer = 0.8 + Math.random() * 2.5;
+      if ((a.swamp ?? 0) > 0.2 && !s.underwater && Math.random() < (a.swamp ?? 0) * (0.4 + 0.6 * (1 - s.day))) this.frog();
+    }
+    // Lumen Grove: soft pentatonic chimes drifting through the glow at night
+    this.chimeTimer -= dt;
+    if (this.chimeTimer < 0) {
+      this.chimeTimer = 1.2 + Math.random() * 3;
+      if ((a.lumen ?? 0) > 0.2 && !s.underwater && s.day < 0.6) this.chime(a.lumen);
+    }
+    // crackling campfires and volcanic vents
+    this.crackleTimer -= dt;
+    if (this.crackleTimer < 0) {
+      this.crackleTimer = 0.05 + Math.random() * 0.35;
+      const c = Math.max(s.fire ?? 0, (a.volcanic ?? 0) * 0.4);
+      if (c > 0.05 && Math.random() < c) this.crackle(c);
+    }
+  }
+
+  frog() {
+    const ctx = this.ctx, t0 = ctx.currentTime;
+    const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    const g = ctx.createGain();
+    if (pan) { pan.pan.value = Math.random() * 1.6 - 0.8; g.connect(pan); pan.connect(this.bus); } else g.connect(this.bus);
+    const base = 180 + Math.random() * 220;
+    const n = 1 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < n; i++) {
+      const t = t0 + i * 0.22;
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.setValueAtTime(base * 1.3, t);
+      o.frequency.exponentialRampToValueAtTime(base * 0.8, t + 0.12);
+      const f = ctx.createBiquadFilter();
+      f.type = 'bandpass'; f.frequency.value = base * 3; f.Q.value = 3;
+      const og = ctx.createGain();
+      og.gain.setValueAtTime(0, t);
+      og.gain.linearRampToValueAtTime(0.03, t + 0.015);
+      og.gain.exponentialRampToValueAtTime(0.0005, t + 0.16);
+      o.connect(f); f.connect(og); og.connect(g);
+      o.start(t); o.stop(t + 0.18);
+    }
+  }
+
+  chime(w) {
+    const ctx = this.ctx, t0 = ctx.currentTime;
+    const scale = [0, 2, 4, 7, 9, 12, 14, 16];
+    const f0 = 523.25 * Math.pow(2, scale[Math.floor(Math.random() * scale.length)] / 12);
+    const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(0.018 * w, t0 + 0.04);
+    g.gain.exponentialRampToValueAtTime(0.0003, t0 + 3.5);
+    if (pan) { pan.pan.value = Math.random() * 1.4 - 0.7; g.connect(pan); pan.connect(this.bus); } else g.connect(this.bus);
+    for (const [mult, amp] of [[1, 1], [2.01, 0.35], [3.02, 0.12]]) {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = f0 * mult;
+      const og = ctx.createGain();
+      og.gain.value = amp;
+      o.connect(og); og.connect(g);
+      o.start(t0); o.stop(t0 + 3.6);
+    }
+  }
+
+  crackle(v) {
+    const ctx = this.ctx, t0 = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = this.white;
+    const f = ctx.createBiquadFilter();
+    f.type = 'highpass'; f.frequency.value = 1800 + Math.random() * 2500;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.06 * v * (0.4 + Math.random()), t0);
+    g.gain.exponentialRampToValueAtTime(0.0005, t0 + 0.03 + Math.random() * 0.03);
+    src.connect(f); f.connect(g); g.connect(this.bus);
+    src.start(t0, Math.random() * 2); src.stop(t0 + 0.08);
   }
 
   bird() {

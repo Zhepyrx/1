@@ -95,10 +95,11 @@ bool hitAlt(float a, float dy, float H, out float t) {
 `;
 
 // Camera-centred sky panorama: clouds (rgb in-scatter, a transmittance) and night-sky extras.
-// Each frame refreshes one texel of every 4x4 block (Bayer order); a full refresh takes 16 frames.
+// Each frame refreshes one texel of every 4x4 block (Bayer order), or of every other block at high
+// panorama resolutions; a full refresh takes 16 or 32 frames.
 export const cloudPanoFS = HEADER + UTIL + FRAME + ATMOS_SAMPLE + CLOUD_FIELD + SKY_EXTRAS + HIT_ALT + /* glsl */`
 uniform vec2 uPanoRes;
-uniform int uPhase;
+uniform int uPhase, uPhases;
 uniform float uFull;
 uniform int uCloudSteps;
 uniform float uCirrus;
@@ -219,7 +220,8 @@ vec4 traceClouds(vec3 rd, float jit) {
 
 void main() {
   ivec2 px = ivec2(gl_FragCoord.xy);
-  int idx = BAYER[(px.x & 3) + (px.y & 3) * 4];
+  // 16 phases: one texel of every 4x4 block per frame; 32 phases alternate between neighbouring blocks
+  int idx = BAYER[(px.x & 3) + (px.y & 3) * 4] + (uPhases > 16 ? 16 * (((px.x >> 2) + (px.y >> 2)) & 1) : 0);
   if (uFull < 0.5 && idx != uPhase) discard;
   vec2 uv = (vec2(px) + 0.5) / uPanoRes;
   float az = (uv.x - 0.5) * TAU;

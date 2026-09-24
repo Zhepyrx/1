@@ -1,5 +1,5 @@
 // First-person player: movement, collision against voxels, swimming and flying.
-import { B } from './blocks.js';
+import { B, WATERLOGGED } from './blocks.js';
 
 const HW = 0.3, HEIGHT = 1.8, EYE = 1.62;
 
@@ -59,8 +59,9 @@ export class Player {
     const chest = w.getBlock(Math.floor(this.pos[0]), Math.floor(this.pos[1] + 1.0), Math.floor(this.pos[2]));
     const e = this.eye(false);
     const eyeB = w.getBlock(Math.floor(e[0]), Math.floor(e[1] - 0.06), Math.floor(e[2]));
-    this.inWater = feet === B.WATER || chest === B.WATER || feet === B.SEAGRASS;
-    this.eyeInWater = eyeB === B.WATER || eyeB === B.SEAGRASS;
+    const wet = (b) => b === B.WATER || (b > 0 && WATERLOGGED[b] === 1);
+    this.inWater = wet(feet) || wet(chest);
+    this.eyeInWater = wet(eyeB);
 
     const f = [Math.sin(this.yaw), -Math.cos(this.yaw)];
     const r = [Math.cos(this.yaw), Math.sin(this.yaw)];

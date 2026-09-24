@@ -43,8 +43,11 @@ layout(location = 0) in vec2 aCorner;
 uniform mat4 uVP;
 uniform int uKind;
 uniform float uIntensity;
+uniform float uWindSmoke;
 uniform sampler2D uSurf;
 uniform vec2 uSurfOrigin;
+uniform vec4 uEmit[4];
+uniform int uEmitCount;
 out vec2 vC;
 out vec4 vCol;
 flat out int vK;
@@ -66,9 +69,26 @@ void main() {
   else if (uKind == 1) { box = vec3(30.0, 20.0, 30.0); vel = vec3(0.4, -1.3, 0.2); size = 0.04; wobble = vec3(sin(t * 1.3 + id), 0.0, cos(t * 1.1 + id * 1.7)) * 0.4; }
   else if (uKind == 2) { box = vec3(40.0, 5.0, 40.0); vel = vec3(0.0); size = 0.05; wobble = vec3(sin(t * 0.7 + id * 3.1) * 1.5, sin(t * 1.1 + id) * 0.6, cos(t * 0.6 + id * 2.3) * 1.5); }
   else if (uKind == 3) { box = vec3(12.0, 8.0, 12.0); vel = vec3(0.25, 0.05, 0.12); size = 0.007; wobble = vec3(sin(t * 0.5 + id), sin(t * 0.3 + id * 2.0), cos(t * 0.4 + id)) * 0.5; }
+  else if (uKind == 6) { box = vec3(34.0, 16.0, 34.0); vel = vec3(0.7, -0.9, 0.35); size = 0.1; wobble = vec3(sin(t * 1.1 + id * 2.1) * 1.2, 0.0, cos(t * 0.9 + id) * 0.9); }
+  else if (uKind == 7) { box = vec3(26.0, 12.0, 26.0); vel = vec3(0.06, 0.22, 0.04); size = 0.035; wobble = vec3(sin(t * 0.4 + id * 1.3), sin(t * 0.6 + id), cos(t * 0.35 + id * 2.1)) * 0.8; }
+  else if (uKind == 8) { box = vec3(30.0, 16.0, 30.0); vel = vec3(0.5, -0.45, 0.3); size = 0.045; wobble = vec3(sin(t * 0.9 + id), 0.0, cos(t * 0.7 + id * 1.7)) * 0.7; }
+  else if (uKind == 9) { box = vec3(20.0, 14.0, 20.0); vel = vec3(0.2, 1.6, 0.1); size = 0.022; wobble = vec3(sin(t * 3.0 + id * 2.3), 0.0, cos(t * 2.6 + id)) * 0.35; }
   else { box = vec3(30.0, 14.0, 30.0); vel = vec3(0.9, -0.7, 0.4); size = 0.07; wobble = vec3(sin(t * 1.7 + id * 2.1), 0.0, cos(t * 1.3 + id)) * 0.6; }
   vec3 base = h * box + vel * t;
   vec3 p = uCamPos + mod(base - uCamPos + box * 0.5, box) - box * 0.5 + wobble;
+  float life = 0.0;
+  if (uKind == 10 || uKind == 11) {
+    // plumes rising from campfires: each particle cycles through its life above one emitter
+    int e = int(mod(id, float(max(uEmitCount, 1))));
+    vec3 src = uEmit[e].xyz + vec3(0.5, 0.35, 0.5);
+    float rate = uKind == 10 ? 0.16 : 0.55;
+    life = fract(t * rate + h.x);
+    float rise = uKind == 10 ? life * 7.0 : life * 3.2;
+    vec3 drift = vec3(sin(t * 0.4 + h.y * 6.0), 0.0, cos(t * 0.33 + h.z * 6.0)) * life * life * (uKind == 10 ? 2.2 : 0.8);
+    p = src + vec3((h.y - 0.5) * 0.3, rise, (h.z - 0.5) * 0.3) + drift + vec3(1.0, 0.0, 0.4) * life * uWindSmoke;
+    size = uKind == 10 ? 0.12 + life * 0.9 : 0.018;
+    box = vec3(60.0);
+  }
   vec2 sf = surfAt(p.xz);
   float ground = sf.x;
   int flags = int(sf.y + 0.5);
@@ -89,6 +109,16 @@ void main() {
     visible = (flags & 16) != 0 && ground > 0.0;
   } else if (uKind == 4) {
     visible = (flags & 2) != 0 && p.y > ground + 0.3 && p.y < ground + 10.0;
+  } else if (uKind == 6) {
+    visible = (flags & 1) != 0 && p.y > ground + 0.15 && p.y < ground + 14.0;
+  } else if (uKind == 7) {
+    visible = (flags & 32) != 0 && p.y > ground + 0.4 && p.y < ground + 9.0;
+  } else if (uKind == 8) {
+    visible = (flags & 64) != 0 && p.y > ground + 0.2;
+  } else if (uKind == 9) {
+    visible = (flags & 64) != 0 && p.y > ground + 0.3 && p.y < ground + 12.0;
+  } else if (uKind == 10 || uKind == 11) {
+    visible = uEmitCount > 0;
   }
   vec3 rel = p - uCamPos;
   float dist = length(rel);
@@ -104,8 +134,8 @@ void main() {
   } else {
     right = normalize(cross(vec3(0.0, 1.0, 0.0), V)) * size;
     up = normalize(cross(V, right)) * size;
-    if (uKind == 4) {
-      float a = t * 2.0 + id;
+    if (uKind == 4 || uKind == 6 || uKind == 8) {
+      float a = t * (uKind == 6 ? 1.3 : 2.0) + id;
       right = right * cos(a) + up * sin(a) * 0.5;
       up = up * (0.6 + 0.4 * sin(a * 1.3));
     }
@@ -121,10 +151,29 @@ void main() {
     col = vec3(0.9, 1.0, 0.35) * 14.0 * blink; alpha = 0.0;
   } else if (uKind == 3) {
     col = uLightColor * sh * 0.03 * (0.4 + 0.6 * pow(max(dot(-V, uLightDir), 0.0), 3.0)) + amb * 0.004; alpha = 0.0;
+  } else if (uKind == 6) {
+    vec3 leaf = h.z < 0.33 ? vec3(0.75, 0.12, 0.05) : h.z < 0.66 ? vec3(0.92, 0.45, 0.08) : vec3(0.93, 0.72, 0.16);
+    col = leaf * (amb * 0.8 + uLightColor * sh * 0.3); alpha = 1.0;
+  } else if (uKind == 7) {
+    float tw = 0.55 + 0.45 * sin(t * (1.2 + h.x * 2.0) + id * 3.7);
+    col = mix(vec3(0.25, 0.9, 1.0), vec3(0.6, 1.0, 0.8), h.y) * 3.2 * tw * (0.35 + 0.65 * uNight); alpha = 0.0;
+  } else if (uKind == 8) {
+    col = vec3(0.3, 0.29, 0.28) * (amb * 0.9 + uLightColor * sh * 0.3); alpha = 0.8;
+  } else if (uKind == 9) {
+    float life = fract(p.y * 0.08 + h.z);
+    col = mix(vec3(1.0, 0.55, 0.12), vec3(1.0, 0.2, 0.03), life) * 22.0 * (1.0 - life) * (0.6 + 0.4 * sin(t * 13.0 + id)); alpha = 0.0;
+  } else if (uKind == 10) {
+    // wood smoke: warm-lit at the base by the fire, grey and thinning as it rises
+    float a = smoothstep(0.0, 0.08, life) * (1.0 - life) * 0.3;
+    col = vec3(1.0, 0.5, 0.2) * 0.45 * (1.0 - smoothstep(0.0, 0.2, life)) + vec3(0.36, 0.35, 0.34) * (amb * 1.1 + uLightColor * sh * 0.25);
+    col *= a; alpha = a;
+  } else if (uKind == 11) {
+    col = mix(vec3(1.0, 0.7, 0.25), vec3(1.0, 0.25, 0.04), life) * 28.0 * (1.0 - life) * (0.5 + 0.5 * sin(t * 17.0 + id * 3.0)); alpha = 0.0;
   } else {
     col = vec3(0.95, 0.62, 0.78) * (amb * 0.8 + uLightColor * sh * 0.35); alpha = 1.0;
   }
   float fade = smoothstep(box.x * 0.5, box.x * 0.3, length(rel.xz)) * smoothstep(uKind == 0 ? 1.5 : 0.3, uKind == 0 ? 4.0 : 1.2, dist);
+  if (uKind == 10 || uKind == 11) fade = smoothstep(0.2, 1.0, dist);
   vCol = vec4(col * uIntensity * fade, alpha * uIntensity * fade);
   vC = aCorner * 2.0;
   gl_Position = uVP * vec4(wpos, 1.0);
@@ -141,6 +190,8 @@ void main() {
   float a;
   if (vK == 0) a = (1.0 - abs(vC.x)) * smoothstep(1.0, 0.6, abs(vC.y));
   else if (vK == 4) { a = step(r, 0.85); }
+  else if (vK == 6) { float ang = atan(vC.y, vC.x); a = step(r, 0.55 + 0.35 * pow(abs(cos(ang * 2.5)), 0.6)); }
+  else if (vK == 8) { float ang = atan(vC.y, vC.x); a = step(r, 0.6 + 0.3 * sin(ang * 3.0 + vCol.a * 9.0)); }
   else if (vK == 5) { a = smoothstep(0.12, 0.0, abs(r - 0.8)) * step(r, 1.0); }
   else a = exp(-r * r * 3.5) * step(r, 1.0);
   if (a < 0.003) discard;
