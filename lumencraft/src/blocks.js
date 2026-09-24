@@ -20,6 +20,7 @@ export const B = {
   COAL_ORE: 24, IRON_ORE: 25, GOLD_ORE: 26, DIAMOND_ORE: 27, COPPER_ORE: 28, EMERALD_ORE: 29, AMETHYST: 30,
   GLOWSTONE: 31, GLASS: 32, PLANKS: 33, STONE_BRICKS: 34, BRICKS: 35, GOLD_BLOCK: 36, COPPER_BLOCK: 37,
   MARBLE: 38, OBSIDIAN: 39, CACTUS: 40, LAMP: 41, TORCH: 42, TERRACOTTA: 43, DEEPSLATE: 44,
+  OAK_WOOD: 45, CHERRY_WOOD: 46, SPRUCE_WOOD: 47,
   TALL_GRASS: 50, FERN: 51, POPPY: 52, DANDELION: 53, CORNFLOWER: 54, DAISY: 55, ALLIUM: 56, DEAD_BUSH: 57,
   SEAGRASS: 58, GLOW_MUSHROOM: 59, PINK_PETALS: 60, SHORT_GRASS: 61,
 };
@@ -70,6 +71,9 @@ def(B.OAK_LOG, 'Oak Log', { top: 'log_top', side: 'oak_log', sound: 'wood' });
 def(B.BIRCH_LOG, 'Birch Log', { top: 'log_top', side: 'birch_log', sound: 'wood' });
 def(B.SPRUCE_LOG, 'Spruce Log', { top: 'log_top', side: 'spruce_log', sound: 'wood' });
 def(B.CHERRY_LOG, 'Cherry Log', { top: 'log_top', side: 'cherry_log', sound: 'wood' });
+def(B.OAK_WOOD, 'Oak Wood', { tex: 'oak_log', sound: 'wood' });
+def(B.CHERRY_WOOD, 'Cherry Wood', { tex: 'cherry_log', sound: 'wood' });
+def(B.SPRUCE_WOOD, 'Spruce Wood', { tex: 'spruce_log', sound: 'wood' });
 def(B.OAK_LEAVES, 'Oak Leaves', { tex: 'oak_leaves', render: R.CUTOUT, atten: 1, tint: 2, wave: 1, sound: 'leaves' });
 def(B.BIRCH_LEAVES, 'Birch Leaves', { tex: 'birch_leaves', render: R.CUTOUT, atten: 1, tint: 2, wave: 1, sound: 'leaves' });
 def(B.SPRUCE_LEAVES, 'Spruce Leaves', { tex: 'spruce_leaves', render: R.CUTOUT, atten: 1, wave: 1, sound: 'leaves' });
@@ -84,7 +88,7 @@ def(B.GOLD_ORE, 'Gold Ore', { tex: 'gold_ore' });
 def(B.DIAMOND_ORE, 'Diamond Ore', { tex: 'diamond_ore' });
 def(B.COPPER_ORE, 'Copper Ore', { tex: 'copper_ore' });
 def(B.EMERALD_ORE, 'Emerald Ore', { tex: 'emerald_ore' });
-def(B.AMETHYST, 'Amethyst', { tex: 'amethyst', emit: 7, sound: 'glass' });
+def(B.AMETHYST, 'Amethyst', { tex: 'amethyst', emit: 5, sound: 'glass' });
 def(B.GLOWSTONE, 'Glowstone', { tex: 'glowstone', emit: 15, sound: 'glass' });
 def(B.GLASS, 'Glass', { tex: 'glass', render: R.GLASSY, sound: 'glass' });
 def(B.PLANKS, 'Oak Planks', { tex: 'oak_planks', sound: 'wood' });

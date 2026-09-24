@@ -255,7 +255,8 @@ void main() {
   float d = texelFetch(uDepth, px, 0).r;
   vec3 rd = viewRay(uv);
   if (d >= 1.0) {
-    vec3 c = skyFull(rd, true);
+    // below the horizon there is no terrain left: show the same haze that distant terrain fades into
+    vec3 c = rd.y < 0.0 ? skyLUT(normalize(vec3(rd.x, 0.0, rd.z))) : skyFull(rd, true);
     vec4 cl = texture(uCloudTex, uv);
     c = c * cl.a + cl.rgb;
     vec4 v = texture(uVol, uv);

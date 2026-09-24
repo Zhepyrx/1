@@ -106,3 +106,9 @@ sources/github.ts  ─┤→ db.ts (SQLite) → score.ts → draft.ts (Claude) �
 ## License
 
 MIT.
+
+## Also in this repository: Lumencraft
+
+[`lumencraft/`](lumencraft/README.md) is a separate, self-contained project: a voxel sandbox with a physically based
+WebGL 2 renderer. Open `lumencraft/Lumencraft.html` in a desktop browser to play, or see its README for the
+source layout and build steps. It shares no code or dependencies with the bounty pipeline.

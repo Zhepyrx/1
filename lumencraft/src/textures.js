@@ -20,7 +20,7 @@ export const TEX_INFO = {
   snow: I(0.02, 0.03, 0.0, 1), snow_side: I(0.03, 0.04, 0.5, 0), ice: I(0, 0.02, 0.0, 16),
   glass: I(0, 0.01, 0.0, 16), coal_ore: I(0.04, 0.05, 0.3, 0), iron_ore: I(0.04, 0.05, 0.3, 0),
   gold_ore: I(0.04, 0.05, 0.3, 0), diamond_ore: I(0.04, 0.05, 0.3, 0), copper_ore: I(0.04, 0.05, 0.3, 0),
-  emerald_ore: I(0.04, 0.05, 0.3, 0), amethyst: I(0.06, 0.06, 0.0, 0, 2.2), glowstone: I(0.05, 0.05, 0.0, 0, 7),
+  emerald_ore: I(0.04, 0.05, 0.3, 0), amethyst: I(0.06, 0.06, 0.0, 0, 1.6), glowstone: I(0.05, 0.05, 0.0, 0, 7),
   lava: I(0.03, 0.04, 0.0, 4, 9), deepslate: I(0.05, 0.06, 0.3, 1), obsidian: I(0.02, 0.03, 0.0, 0),
   clay: I(0.015, 0.02, 0.6, 1), moss: I(0.04, 0.05, 0.8, 1), mossy_cobblestone: I(0.09, 0.09, 0.6, 0),
   gold_block: I(0.02, 0.03, 0.0, 0), copper_block: I(0.02, 0.03, 0.1, 0), marble: I(0.01, 0.015, 0.0, 0),
@@ -36,6 +36,7 @@ const LIB = /* glsl */`
 float hash(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 vec2 hash2(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * vec3(.1031, .1030, .0973)); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.xx + p3.yz) * p3.zy); }
 vec3 srgb(vec3 c) { return pow(max(c, 0.0), vec3(2.2)); }
+float saturate(float x) { return clamp(x, 0.0, 1.0); }
 float vnoise(vec2 p, vec2 per, float seed) {
   vec2 i = floor(p), f = fract(p);
   vec2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
@@ -325,9 +326,9 @@ const MAT = {
     if (a3 * 0.82 > h) { h = a3 * 0.82; sh = s3; }
     if (a4 * 0.75 > h) { h = a4 * 0.75; sh = s4; }
     m.alpha = step(0.02, h);
-    vec3 c = mix(vec3(0.92, 0.56, 0.74), vec3(1.0, 0.78, 0.87), sh);
-    c = mix(c, vec3(0.99, 0.94, 0.96), step(0.86, sh) * 0.6);
-    c = mix(c, vec3(0.78, 0.34, 0.52), smoothstep(0.3, 0.05, h) * 0.6);
+    vec3 c = mix(vec3(0.96, 0.5, 0.64), vec3(1.0, 0.74, 0.8), sh);
+    c = mix(c, vec3(1.0, 0.93, 0.93), step(0.86, sh) * 0.55);
+    c = mix(c, vec3(0.8, 0.3, 0.45), smoothstep(0.3, 0.05, h) * 0.6);
     m.alb = srgb(c * (0.8 + 0.25 * h)); m.h = h; m.rough = 0.5;`,
   birch_log: `
     float n = fbm(uv, vec2(4.0, 2.0), 4, 0.5, 3.0);
@@ -434,13 +435,15 @@ const MAT = {
   copper_ore: `m = stoneM(uv); ORE(vec3(0.85, 0.48, 0.32), 0.35, 0.8, 5.0)`,
   emerald_ore: `m = stoneM(uv); ORE(vec3(0.15, 0.85, 0.4), 0.06, 0.0, 6.0)`,
   amethyst: `
-    vec4 v = voronoi(uv * 5.0, vec2(5.0), 4.0, 1.0);
-    vec4 v2 = voronoi(uv * 11.0, vec2(11.0), 8.0, 1.0);
-    float e = smoothstep(0.0, 0.09, v.y - v.x);
-    float facet = fract(v.z * 3.0 + v2.z * 0.5);
-    vec3 c = mix(vec3(0.3, 0.14, 0.5), vec3(0.8, 0.6, 0.98), facet) * (0.65 + 0.35 * e);
-    m.alb = srgb(c); m.h = 0.25 + 0.6 * e * (0.5 + 0.5 * facet) + 0.15 * (1.0 - v2.x);
-    m.rough = 0.12; m.emit = 0.15 + 0.85 * smoothstep(0.6, 1.0, facet) * e;`,
+    vec4 v = voronoi(uv * 4.0, vec2(4.0), 4.0, 1.0);
+    vec4 v2 = voronoi(uv * 9.0, vec2(9.0), 8.0, 1.0);
+    float e = smoothstep(0.0, 0.12, v.y - v.x);
+    float e2 = smoothstep(0.0, 0.1, v2.y - v2.x);
+    float facet = v.z * 0.7 + v2.z * 0.3;
+    float grad = saturate(1.0 - v.x * 1.6);
+    vec3 c = mix(vec3(0.26, 0.12, 0.42), vec3(0.62, 0.44, 0.86), facet * 0.7 + grad * 0.3) * (0.7 + 0.3 * e) * (0.85 + 0.15 * e2);
+    m.alb = srgb(c); m.h = 0.3 + 0.45 * e * grad + 0.25 * e2;
+    m.rough = 0.1; m.emit = 0.08 + 0.35 * smoothstep(0.75, 1.0, facet) * e * grad;`,
   glowstone: `
     vec4 v = voronoi(uv * 6.0, vec2(6.0), 1.0, 1.0);
     vec4 v2 = voronoi(uv * 13.0, vec2(13.0), 3.0, 1.0);
@@ -632,46 +635,47 @@ function oreMacro(body) {
   });
 }
 
-function buildShader() {
-  let sw = '';
-  TEX_NAMES.forEach((name, i) => {
-    const body = oreMacro(MAT[name] ?? '');
-    sw += `  ${i === 0 ? '' : 'else '}if (id == ${i}) {\n${body}\n  }\n`;
-  });
+function materialShader(name) {
+  const body = oreMacro(MAT[name] ?? '');
   return `#version 300 es
 precision highp float;
 precision highp int;
 in vec2 vUV;
-uniform int uLayer;
 uniform float uRes;
-uniform float uNormDepth;
 layout(location = 0) out vec4 oAlbedo;
-layout(location = 1) out vec4 oNormal;
+layout(location = 1) out vec4 oHeight;
 layout(location = 2) out vec4 oMat;
 ${LIB}
-M mat(int id, vec2 uv) {
-  uv = fract(uv);
+M mat(vec2 uv) {
   M m = mdef();
-${sw}
+${body}
   return m;
 }
 void main() {
-  vec2 px = floor(gl_FragCoord.xy);
-  vec2 uv = (px + 0.5) / uRes;
-  int id = uLayer;
-  M m = mat(id, uv);
-  float e = 1.0 / uRes;
-  float hx = mat(id, uv + vec2(e, 0.0)).h, hy = mat(id, uv + vec2(0.0, e)).h;
-  float hxm = mat(id, uv - vec2(e, 0.0)).h, hym = mat(id, uv - vec2(0.0, e)).h;
-  // slope in blocks: dh * depth / (2 * texel)
-  vec2 s = vec2(hx - hxm, hy - hym) * uNormDepth / (2.0 * e);
-  vec3 n = normalize(vec3(-s, 1.0));
+  vec2 uv = (floor(gl_FragCoord.xy) + 0.5) / uRes;
+  M m = mat(uv);
   oAlbedo = vec4(clamp(m.alb, 0.0, 1.0), clamp(m.alpha, 0.0, 1.0));
-  oNormal = vec4(n * 0.5 + 0.5, clamp(m.h, 0.0, 1.0));
+  oHeight = vec4(clamp(m.h, 0.0, 1.0), 0.0, 0.0, 1.0);
   float ao = mix(0.55, 1.0, clamp(m.h * 1.4, 0.0, 1.0));
   oMat = vec4(clamp(m.rough, 0.02, 1.0), clamp(m.metal, 0.0, 1.0), clamp(m.emit, 0.0, 1.0), ao);
 }`;
 }
+
+// Normal map from the height field (wrapping), height kept in alpha.
+const NORMAL_FS = `#version 300 es
+precision highp float;
+uniform sampler2D uHeight;
+uniform float uRes;
+uniform float uNormDepth;
+out vec4 o;
+float h(ivec2 p) { int n = int(uRes); return texelFetch(uHeight, ivec2((p.x + n) % n, (p.y + n) % n), 0).r; }
+void main() {
+  ivec2 p = ivec2(gl_FragCoord.xy);
+  float e = 1.0 / uRes;
+  vec2 s = vec2(h(p + ivec2(1, 0)) - h(p - ivec2(1, 0)), h(p + ivec2(0, 1)) - h(p - ivec2(0, 1))) * uNormDepth / (2.0 * e);
+  vec3 n = normalize(vec3(-s, 1.0));
+  o = vec4(n * 0.5 + 0.5, h(p));
+}`;
 
 // Build the three block texture arrays on the GPU.
 export function generateBlockTextures(gl, res, aniso) {
@@ -689,27 +693,43 @@ export function generateBlockTextures(gl, res, aniso) {
     return t;
   };
   const albedo = mk(gl.SRGB8_ALPHA8), normal = mk(gl.RGBA8), material = mk(gl.RGBA8);
-  const prog = new Program(gl, FS_TRI_VS, buildShader(), 'blocktex');
-  prog.check();
-  prog.use();
+  // Compile every material program first so drivers with parallel compilation can overlap them.
+  const progs = TEX_NAMES.map((name) => new Program(gl, FS_TRI_VS, materialShader(name), 'tex:' + name));
+  const nprog = new Program(gl, FS_TRI_VS, NORMAL_FS, 'texNormal');
+  const hTex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, hTex);
+  gl.texStorage2D(gl.TEXTURE_2D, 1, gl.R16F, res, res);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   const fb = gl.createFramebuffer();
-  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
-  gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1, gl.COLOR_ATTACHMENT2]);
+  const fbN = gl.createFramebuffer();
   gl.viewport(0, 0, res, res);
   gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE);
-  prog.f('uRes', res);
   const info = [];
   for (let i = 0; i < L; i++) {
+    const prog = progs[i];
+    prog.check();
+    prog.use().f('uRes', res);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
     gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, albedo, 0, i);
-    gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, normal, 0, i);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, hTex, 0);
     gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT2, material, 0, i);
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1, gl.COLOR_ATTACHMENT2]);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
     const ti = TEX_INFO[TEX_NAMES[i]] ?? I(0, 0.03, 0.3, 0);
-    prog.i('uLayer', i).f('uNormDepth', ti.nd);
+    nprog.check();
+    nprog.use().f('uRes', res).f('uNormDepth', ti.nd).tex('uHeight', hTex);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbN);
+    gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, normal, 0, i);
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     info.push(ti);
   }
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-  gl.deleteFramebuffer(fb);
+  gl.deleteFramebuffer(fb); gl.deleteFramebuffer(fbN);
+  gl.deleteTexture(hTex);
+  for (const p of progs) gl.deleteProgram(p.prog);
+  gl.deleteProgram(nprog.prog);
   for (const t of [albedo, normal, material]) {
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, t);
     gl.generateMipmap(gl.TEXTURE_2D_ARRAY);

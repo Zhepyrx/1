@@ -49,7 +49,7 @@ const state = {
   slot: 0,
   hudHidden: false,
   perf: false,
-  fps: 0, frameMs: 0, gpuMs: 0,
+  fps: 0, frameMs: 0, gpuMs: 0, cpuMs: 0,
   selection: null,
   breakTimer: 0,
   mouse: { left: false, right: false },
@@ -76,7 +76,13 @@ async function boot() {
   }
   resize();
   const q = QUALITY[settings.quality] ?? QUALITY.high;
-  await renderer.init(q, (msg) => setBoot(msg, 0.3));
+  try {
+    await renderer.init(q, (msg) => setBoot(msg, 0.3));
+  } catch (e) {
+    console.error(e);
+    fatal(`The renderer could not start on this GPU: ${e.message}`);
+    return;
+  }
   renderer.scale = settings.dynamicRes ? q.scale : settings.renderScale;
   renderer.allocTargets(true);
   setBoot('Shaping the world', 0.6);
@@ -138,6 +144,7 @@ let testLeft = -1;
 function loop(now) {
   if (TEST && document.title === 'ready') return;
   requestAnimationFrame(loop);
+  const frameStart = performance.now();
   let dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   if (TEST) dt = 1 / 60;
@@ -160,11 +167,11 @@ function loop(now) {
         let y = 200;
         while (y > 1 && !world.isSolid(Math.floor(spawn[0]), y - 1, Math.floor(spawn[2]))) y--;
         if (!params.has('pos')) player.pos[1] = y;
-        state.mode = TEST ? 'play' : 'title';
+        state.mode = TEST && !params.has('title') ? 'play' : 'title';
         $('boot').classList.add('done');
-        if (TEST) { $('boot').hidden = true; $('hud').hidden = params.get('hud') !== '1'; }
+        if (TEST) { $('boot').hidden = true; $('hud').hidden = params.get('hud') !== '1' || state.mode === 'title'; }
         setTimeout(() => { $('boot').hidden = true; }, 900);
-        if (!TEST) showTitle();
+        if (state.mode === 'title') showTitle();
       }
     }
     if (state.mode === 'boot') return;
@@ -245,7 +252,8 @@ function loop(now) {
   const dayF = 1 - env.night;
   const noRain = 1 - weather.rain;
   const particles = [
-    { kind: 0, count: Math.round(7000 * weather.rain), intensity: 1, additive: false },
+    { kind: 0, count: Math.round(12000 * weather.rain), intensity: 1, additive: false },
+    { kind: 5, count: Math.round(1500 * weather.rain), intensity: 1, additive: false },
     { kind: 1, count: Math.round(4000 * weather.rain), intensity: 1, additive: false },
     { kind: 2, count: Math.round(260 * env.night * noRain), intensity: 1, additive: true },
     { kind: 3, count: Math.round(500 * dayF * noRain), intensity: 1, additive: true },
@@ -270,13 +278,14 @@ function loop(now) {
   const S = {
     cam, env, weather, time: state.time, dt, renderDist: settings.renderDist, chunks: world.renderList,
     wind: 1 + weather.rain * 1.2, flicker, fog, underwater, aurora,
-    post: { bloom: 0.09, sharpen: settings.sharpen, vignette: 0.22, grain: settings.grain ? 0.035 : 0, saturation: 1.0, contrast: 1.0 },
+    post: { bloom: 0.09, sharpen: settings.sharpen, vignette: 0.22, grain: settings.grain ? 0.035 : 0, saturation: 1.08, contrast: 1.0 },
     evComp: state.evComp + (underwater ? 0.3 : 0), particles, debris, selection: state.hudHidden ? null : state.selection,
     debug: +(params.get('dbg') ?? 0),
     plantFade: world.detailRadius * 32,
   };
   beginGpuTimer();
   try { renderer.render(S); } finally { endGpuTimer(); }
+  state.cpuMs += (performance.now() - frameStart - state.cpuMs) * 0.1;
 
   if (audio) {
     const ex = Math.floor(cam.pos[0]), ez = Math.floor(cam.pos[2]);
@@ -550,7 +559,16 @@ function blockIcon(id, size = 64) {
   };
   const tint = TINT[id] === 1 ? [0.47, 0.68, 0.32] : TINT[id] === 2 ? [0.42, 0.62, 0.3] : null;
   const s = size / 64;
-  if (RENDER[id] === R.CROSS || RENDER[id] === R.TORCH || RENDER[id] === R.CARPET) {
+  if (RENDER[id] === R.TORCH) {
+    g.fillStyle = '#6b4a2b';
+    g.fillRect(28 * s, 26 * s, 8 * s, 32 * s);
+    g.fillStyle = '#4a321d';
+    g.fillRect(32 * s, 26 * s, 4 * s, 32 * s);
+    const fl = g.createRadialGradient(32 * s, 20 * s, 1, 32 * s, 20 * s, 14 * s);
+    fl.addColorStop(0, 'rgba(255,250,220,1)'); fl.addColorStop(0.35, 'rgba(255,200,90,0.95)'); fl.addColorStop(1, 'rgba(255,120,20,0)');
+    g.fillStyle = fl;
+    g.beginPath(); g.ellipse(32 * s, 18 * s, 9 * s, 13 * s, 0, 0, Math.PI * 2); g.fill();
+  } else if (RENDER[id] === R.CROSS || RENDER[id] === R.CARPET) {
     const { tc } = texCanvas(TEX_SIDE[id], tint);
     g.imageSmoothingEnabled = true;
     g.drawImage(tc, 6 * s, 6 * s, 52 * s, 52 * s);
@@ -643,7 +661,7 @@ function updateHUD(env) {
     const p = player.pos;
     const biome = world.biomeAt(Math.floor(p[0]), Math.floor(p[2]));
     const lines = [
-      `${state.fps.toFixed(0)} fps   ${state.frameMs.toFixed(1)} ms frame   ${state.gpuMs ? state.gpuMs.toFixed(1) + ' ms GPU' : 'GPU timer n/a'}`,
+      `${state.fps.toFixed(0)} fps   ${state.frameMs.toFixed(1)} ms frame   ${state.gpuMs ? state.gpuMs.toFixed(1) + ' ms GPU' : 'GPU timer n/a'}   ${state.cpuMs.toFixed(1)} ms CPU`,
       `internal ${renderer.inW}×${renderer.inH} (${Math.round(renderer.scale * 100)}%) → ${renderer.outW}×${renderer.outH}  ${renderer.q.name}`,
       `draw calls ${renderer.stats.calls}   triangles ${(renderer.stats.tris / 1e6).toFixed(2)} M`,
       `chunks ${world.renderList.length} meshed · ${world.stats.pending} queued · ${world.workers.length} workers`,

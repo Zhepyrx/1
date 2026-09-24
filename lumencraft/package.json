@@ -1,0 +1,14 @@
+{
+  "name": "lumencraft",
+  "version": "1.0.0",
+  "description": "A voxel sandbox with a physically based real-time renderer, in WebGL 2.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node serve.mjs",
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

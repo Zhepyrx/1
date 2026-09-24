@@ -166,7 +166,7 @@ vec3 stars(vec3 d) {
       float b = pow((h - thr) / (1.0 - thr), 3.0) * (layer == 0 ? 1.0 : 2.5);
       float tw = 0.6 + 0.4 * sin(uTime * (2.0 + h * 9.0) + h * 300.0);
       vec3 tint = mix(vec3(0.65, 0.78, 1.0), vec3(1.0, 0.82, 0.62), fract(h * 137.0));
-      col += tint * b * tw * smoothstep(0.16, 0.0, dist) * 0.9;
+      col += tint * b * tw * smoothstep(0.3, 0.0, dist) * 1.6;
     }
   }
   // milky way
@@ -198,7 +198,7 @@ vec3 aurora(vec3 d) {
     acc += col * curtain * mask * fade;
   }
   float north = smoothstep(-0.4, 0.6, -d.z);
-  return acc * 0.05 * uAurora * smoothstep(0.0, 0.25, d.y) * north;
+  return acc * 0.12 * uAurora * smoothstep(0.1, 0.42, d.y) * north;
 }
 vec3 skyFull(vec3 d, bool withDiscs) {
   vec3 c = skyLUT(d);

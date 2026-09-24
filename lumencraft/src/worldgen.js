@@ -269,7 +269,8 @@ export class WorldGen {
       if (lx < 0 || lz < 0 || lx >= CS || lz >= CS || y <= 0 || y >= alloc) return;
       const k = idx(lx, y, lz);
       const cur = data[k];
-      if (force || cur === B.AIR || cur >= 50 || (b >= B.OAK_LOG && b <= B.CHERRY_LOG && cur >= B.OAK_LEAVES && cur <= B.CHERRY_LEAVES)) data[k] = b;
+      const isWood = (b >= B.OAK_LOG && b <= B.CHERRY_LOG) || (b >= B.OAK_WOOD && b <= B.SPRUCE_WOOD);
+      if (force || cur === B.AIR || cur >= 50 || (isWood && cur >= B.OAK_LEAVES && cur <= B.CHERRY_LEAVES)) data[k] = b;
     };
     const getF = (x, y, z) => {
       const lx = x - x0, lz = z - z0;
@@ -492,7 +493,7 @@ export class WorldGen {
           let bx = x, bz = z, yy = by;
           for (let i = 1; i <= len; i++) {
             bx = x + Math.round(Math.cos(a) * i); bz = z + Math.round(Math.sin(a) * i); yy = by + Math.floor(i * 0.6);
-            set(bx, yy, bz, B.OAK_LOG, true);
+            set(bx, yy, bz, B.OAK_WOOD, true);
           }
           blob(bx, yy + 1, bz, 2.8, 2.0, 2.8, B.OAK_LEAVES);
         }
@@ -534,7 +535,7 @@ export class WorldGen {
           for (let i = 1; i <= len; i++) {
             bx = x + Math.round(Math.cos(a) * i); bz = z + Math.round(Math.sin(a) * i);
             yy = y + h - 1 + Math.floor(i * 0.75);
-            set(bx, yy, bz, B.CHERRY_LOG, true);
+            set(bx, yy, bz, B.CHERRY_WOOD, true);
           }
           blob(bx, yy + 1, bz, 3.6, 1.7, 3.6, B.CHERRY_LEAVES, 0.2);
           // hanging blossoms
