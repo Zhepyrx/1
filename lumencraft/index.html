@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lumencraft</title>
+<!--LC:HEAD-START-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Marcellus&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  color-scheme: dark;
+  --ink: #0a0d12;
+  --panel: rgba(12, 15, 21, 0.62);
+  --panel-solid: #11151c;
+  --line: rgba(236, 242, 246, 0.14);
+  --line-strong: rgba(236, 242, 246, 0.28);
+  --text: #edf1f3;
+  --muted: #a7b2ba;
+  --sun: #f2c57c;
+  --sun-deep: #d99a45;
+  --sky: #9fcbe6;
+  --danger: #ff8f7a;
+  --display: 'Marcellus', 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+  --ui: 'Manrope', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+}
+html, body { height: 100%; margin: 0; background: var(--ink); color: var(--text); overflow: hidden; }
+body { font-family: var(--ui); font-size: 14px; -webkit-font-smoothing: antialiased; }
+canvas#gl { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; background: var(--ink); cursor: crosshair; touch-action: none; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--sun); outline-offset: 2px; }
+[hidden] { display: none !important; }
+
+/* ---- boot */
+#boot { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: radial-gradient(120% 90% at 50% 110%, #1c2230 0%, var(--ink) 60%); transition: opacity 0.9s ease; padding-inline: 16px; }
+#boot.done { opacity: 0; pointer-events: none; }
+#boot .inner { display: grid; gap: 18px; justify-items: center; text-align: center; max-width: 30rem; }
+#boot h1 { font-family: var(--display); font-weight: 400; font-size: clamp(34px, 6vw, 56px); letter-spacing: 0.08em; margin: 0; }
+#boot .bar { width: min(260px, 70vw); height: 2px; background: var(--line); overflow: hidden; border-radius: 2px; }
+#boot .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--sun-deep), var(--sun)); transform-origin: left; transform: scaleX(0.02); transition: transform 0.4s ease; }
+#boot-status { color: var(--muted); font-size: 13px; letter-spacing: 0.02em; min-height: 1.4em; }
+#boot.error #boot-status { color: var(--danger); max-width: 28rem; line-height: 1.5; }
+
+/* ---- title */
+#title { position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-end; padding: clamp(20px, 5vw, 64px) clamp(16px, 5vw, 72px); padding-bottom: calc(clamp(20px, 5vw, 64px) + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(20deg, rgba(6, 8, 12, 0.78) 0%, rgba(6, 8, 12, 0.35) 38%, rgba(6, 8, 12, 0) 62%); pointer-events: none; }
+#title .card { pointer-events: auto; display: grid; gap: 20px; max-width: 34rem; animation: rise 1.4s cubic-bezier(.2,.7,.2,1) both; }
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+#title .eyebrow { font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--sun); }
+#title h1 { font-family: var(--display); font-weight: 400; font-size: clamp(48px, 9vw, 104px); line-height: 0.92; letter-spacing: 0.04em; margin: 0; text-wrap: balance; text-shadow: 0 2px 30px rgba(0,0,0,0.35); }
+#title p.lede { margin: 0; color: #d5dde2; line-height: 1.6; font-size: 15px; max-width: 30rem; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.btn { appearance: none; border: 1px solid var(--line-strong); background: rgba(255,255,255,0.04); color: var(--text); padding: 11px 18px; border-radius: 999px; font-weight: 600; font-size: 14px; cursor: pointer; letter-spacing: 0.01em; transition: background 0.2s, border-color 0.2s, transform 0.2s; }
+.btn:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.4); }
+.btn.primary { background: var(--sun); border-color: var(--sun); color: #1b1408; }
+.btn.primary:hover { background: #f7d596; }
+.quality { display: grid; gap: 8px; }
+.quality .label, .group h3 { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); margin: 0; font-weight: 600; }
+.quality-pick { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 999px; background: rgba(8, 10, 14, 0.45); backdrop-filter: blur(8px); width: max-content; max-width: 100%; }
+.quality-pick button { appearance: none; border: 0; background: transparent; padding: 7px 14px; border-radius: 999px; cursor: pointer; color: var(--muted); font-weight: 600; font-size: 13px; }
+.quality-pick button[aria-pressed="true"] { background: rgba(242, 197, 124, 0.16); color: var(--sun); }
+.hint { color: var(--muted); font-size: 12.5px; line-height: 1.7; }
+.hint kbd, .keys kbd { font-family: var(--mono); font-size: 11px; padding: 1px 6px; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 5px; color: var(--text); background: rgba(255,255,255,0.04); }
+.touch-note { display: none; color: var(--sun); font-size: 13px; }
+@media (hover: none) and (pointer: coarse) { .touch-note { display: block; } }
+
+/* ---- HUD */
+#hud { position: fixed; inset: 0; z-index: 10; pointer-events: none; }
+#hud.hidden > * { opacity: 0; }
+#crosshair { position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; transform: translate(-50%, -50%); mix-blend-mode: difference; }
+#crosshair::before, #crosshair::after { content: ''; position: absolute; background: rgba(255,255,255,0.85); }
+#crosshair::before { left: 8px; top: 0; width: 2px; height: 18px; }
+#crosshair::after { top: 8px; left: 0; height: 2px; width: 18px; }
+#hotbar { position: absolute; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); display: flex; gap: 4px; padding: 5px; border-radius: 14px; background: rgba(8, 10, 14, 0.42); border: 1px solid var(--line); backdrop-filter: blur(10px); pointer-events: auto; max-width: calc(100vw - 32px); }
+#hotbar .slot { position: relative; width: clamp(34px, 8.4vw, 54px); aspect-ratio: 1; border-radius: 10px; border: 1px solid transparent; background: rgba(255,255,255,0.03); display: grid; place-items: center; cursor: pointer; padding: 0; }
+#hotbar .slot img { width: 78%; height: 78%; image-rendering: auto; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.45)); }
+#hotbar .slot.active { border-color: var(--sun); background: rgba(242, 197, 124, 0.12); box-shadow: 0 0 0 1px rgba(242,197,124,0.25), 0 0 18px rgba(242,197,124,0.18); }
+#hotbar .num { position: absolute; left: 5px; top: 3px; font-family: var(--mono); font-size: 9.5px; color: var(--muted); }
+#itemname { position: absolute; left: 50%; bottom: calc(92px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); font-family: var(--display); font-size: 18px; letter-spacing: 0.06em; text-shadow: 0 1px 12px rgba(0,0,0,0.6); opacity: 0; transition: opacity 0.35s; white-space: nowrap; }
+#itemname.show, #toast.show { opacity: 1; }
+#toast { position: absolute; left: 50%; top: calc(22px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); padding: 8px 14px; border-radius: 999px; background: rgba(8, 10, 14, 0.55); border: 1px solid var(--line); backdrop-filter: blur(8px); font-size: 13px; opacity: 0; transition: opacity 0.35s; white-space: nowrap; max-width: calc(100vw - 32px); overflow: hidden; text-overflow: ellipsis; }
+#clockchip { position: absolute; right: 16px; top: calc(16px + env(safe-area-inset-top, 0px)); display: flex; align-items: baseline; gap: 10px; padding: 7px 12px; border-radius: 10px; background: rgba(8, 10, 14, 0.36); border: 1px solid var(--line); backdrop-filter: blur(8px); }
+#clock { font-family: var(--mono); font-size: 14px; font-variant-numeric: tabular-nums; }
+#cond { font-size: 12px; color: var(--muted); letter-spacing: 0.04em; }
+#perf { position: absolute; left: 16px; top: calc(16px + env(safe-area-inset-top, 0px)); margin: 0; padding: 10px 12px; border-radius: 10px; background: rgba(6, 8, 12, 0.66); border: 1px solid var(--line); font-family: var(--mono); font-size: 11.5px; line-height: 1.65; white-space: pre; font-variant-numeric: tabular-nums; max-width: calc(100vw - 32px); overflow-x: auto; }
+
+/* ---- pause / settings */
+#pause { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; background: rgba(5, 7, 10, 0.5); backdrop-filter: blur(6px); padding: 16px; }
+#pause .panel { width: min(560px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 24px; display: grid; gap: 18px; box-shadow: 0 30px 80px rgba(0,0,0,0.45); backdrop-filter: blur(18px); }
+#pause h2 { font-family: var(--display); font-weight: 400; font-size: 30px; letter-spacing: 0.04em; margin: 0; }
+#pause .menu { display: grid; gap: 8px; }
+#pause .menu .btn { width: 100%; text-align: left; border-radius: 12px; padding: 13px 16px; }
+.group { display: grid; gap: 10px; padding-top: 4px; }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 12px; align-items: center; }
+.row label { color: #d5dde2; font-size: 13.5px; }
+.row .ctl { display: flex; align-items: center; gap: 10px; justify-content: flex-end; min-width: 0; }
+.row output { font-family: var(--mono); font-size: 11.5px; color: var(--muted); min-width: 4.5em; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+input[type=range] { width: 100%; min-width: 0; accent-color: var(--sun); }
+select { background: rgba(255,255,255,0.05); color: var(--text); border: 1px solid var(--line-strong); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; }
+select option { background: var(--panel-solid); }
+input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--sun); }
+.panel-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.keys { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; font-size: 13.5px; color: #d5dde2; align-items: center; }
+.muted { color: var(--muted); font-size: 12.5px; line-height: 1.6; margin: 0; }
+@media (max-width: 480px) { .row { grid-template-columns: 1fr; } .row .ctl { justify-content: flex-start; } }
+
+/* ---- palette */
+#palette { position: fixed; inset: 0; z-index: 35; display: grid; place-items: center; background: rgba(5, 7, 10, 0.55); backdrop-filter: blur(6px); padding: 16px; }
+#palette .panel { width: min(760px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 22px; display: grid; gap: 16px; backdrop-filter: blur(18px); }
+#palette-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
+.pal-item { display: grid; justify-items: center; gap: 4px; padding: 10px 6px 8px; border-radius: 12px; border: 1px solid var(--line); background: rgba(255,255,255,0.03); cursor: pointer; }
+.pal-item:hover { border-color: var(--sun); background: rgba(242,197,124,0.08); }
+.pal-item img { width: 44px; height: 44px; }
+.pal-item span { font-size: 11px; color: var(--muted); text-align: center; line-height: 1.25; }
+.pal-item.glow img { filter: drop-shadow(0 0 8px rgba(255, 200, 120, 0.55)); }
+@media (prefers-reduced-motion: reduce) { #title .card { animation: none; } #boot { transition: none; } }
+</style>
+<!--LC:HEAD-END-->
+</head>
+<body>
+<!--LC:BODY-START-->
+<canvas id="gl" aria-label="Lumencraft world view"></canvas>
+
+<div id="boot">
+  <div class="inner">
+    <h1>Lumencraft</h1>
+    <div class="bar"><i id="boot-bar"></i></div>
+    <div id="boot-status" role="status">Starting renderer</div>
+  </div>
+</div>
+
+<section id="title" hidden>
+  <div class="card">
+    <div class="eyebrow">Voxel sandbox · real-time light</div>
+    <h1>Lumencraft</h1>
+    <p class="lede">Explore and build in an endless voxel world lit by a physical sky, drifting volumetric clouds, soft sun shadows, reflective water and light that spills from every torch.</p>
+    <div class="actions">
+      <button class="btn primary" id="btn-enter">Enter world</button>
+      <button class="btn" id="btn-title-settings">Settings</button>
+    </div>
+    <div class="quality">
+      <span class="label">Graphics quality</span>
+      <div class="quality-pick" role="group" aria-label="Graphics quality">
+        <button data-q="low" aria-pressed="false">Low</button>
+        <button data-q="medium" aria-pressed="false">Medium</button>
+        <button data-q="high" aria-pressed="false">High</button>
+        <button data-q="ultra" aria-pressed="false">Ultra</button>
+      </div>
+      <span class="hint">Dynamic resolution renders fewer pixels when needed and a temporal upscaler rebuilds full detail, so the frame rate stays at your target.</span>
+    </div>
+    <div class="hint"><kbd>W A S D</kbd> move · <kbd>Space</kbd> jump, double-tap to fly · <kbd>Shift</kbd> sprint · click to break · right-click to place · <kbd>E</kbd> blocks · <kbd>T</kbd> pause time · <kbd>R</kbd> weather · <kbd>F3</kbd> stats</div>
+    <p class="touch-note">Lumencraft is played with a keyboard and mouse. On this device the world renders, but you can't move around.</p>
+  </div>
+</section>
+
+<div id="hud" hidden>
+  <div id="crosshair"></div>
+  <div id="clockchip"><span id="clock">07:15</span><span id="cond">Clear</span></div>
+  <pre id="perf" hidden></pre>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <div id="itemname"></div>
+  <div id="hotbar"></div>
+</div>
+
+<div id="pause" hidden>
+  <div class="panel" data-panel="main">
+    <h2>Paused</h2>
+    <div class="menu">
+      <button class="btn primary" id="btn-resume">Resume</button>
+      <button class="btn" id="btn-settings">Settings</button>
+      <button class="btn" id="btn-controls">Controls</button>
+      <button class="btn" id="btn-newworld">New world</button>
+    </div>
+    <p class="muted">Your settings are saved in this browser. Worlds are generated from a seed and are not saved.</p>
+  </div>
+
+  <div class="panel" data-panel="settings" hidden>
+    <div class="panel-head"><h2>Settings</h2><button class="btn" data-back>Done</button></div>
+    <div class="group">
+      <h3>Graphics</h3>
+      <div class="row"><label for="s-quality">Quality preset</label><div class="ctl"><select id="s-quality"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="ultra">Ultra</option></select></div></div>
+      <div class="row"><label for="s-dynres">Dynamic resolution</label><div class="ctl"><input type="checkbox" id="s-dynres"></div></div>
+      <div class="row"><label for="s-target">Frame-rate target</label><div class="ctl"><select id="s-target"><option value="30">30 fps</option><option value="60">60 fps</option><option value="90">90 fps</option><option value="120">120 fps</option><option value="144">144 fps</option><option value="165">165 fps</option></select></div></div>
+      <div class="row"><label for="s-scale">Render scale</label><div class="ctl"><input type="range" id="s-scale" min="50" max="100" step="2"><output data-out="s-scale" data-fmt="pct"></output></div></div>
+      <div class="row"><label for="s-dist">Render distance</label><div class="ctl"><input type="range" id="s-dist" min="4" max="20" step="1"><output data-out="s-dist" data-fmt="chunks"></output></div></div>
+      <div class="row"><label for="s-sharpen">Sharpening</label><div class="ctl"><input type="range" id="s-sharpen" min="0" max="100" step="5"><output data-out="s-sharpen" data-fmt="pct"></output></div></div>
+      <div class="row"><label for="s-grain">Film grain</label><div class="ctl"><input type="checkbox" id="s-grain"></div></div>
+    </div>
+    <div class="group">
+      <h3>Camera</h3>
+      <div class="row"><label for="s-fov">Field of view</label><div class="ctl"><input type="range" id="s-fov" min="55" max="105" step="1"><output data-out="s-fov" data-fmt="deg"></output></div></div>
+      <div class="row"><label for="s-sens">Mouse sensitivity</label><div class="ctl"><input type="range" id="s-sens" min="0.3" max="3" step="0.05"><output data-out="s-sens" data-fmt="x"></output></div></div>
+      <div class="row"><label for="s-bob">View bobbing</label><div class="ctl"><input type="checkbox" id="s-bob"></div></div>
+    </div>
+    <div class="group">
+      <h3>World</h3>
+      <div class="row"><label for="s-time">Time of day</label><div class="ctl"><input type="range" id="s-time" min="0" max="23.75" step="0.25"><output data-out="s-time" data-fmt="time"></output></div></div>
+      <div class="row"><label for="s-cycle">Day cycle runs</label><div class="ctl"><input type="checkbox" id="s-cycle"></div></div>
+      <div class="row"><label for="s-weather">Weather</label><div class="ctl"><select id="s-weather"><option value="auto">Changes naturally</option><option value="clear">Always clear</option><option value="rain">Rain</option></select></div></div>
+    </div>
+    <div class="group">
+      <h3>Sound</h3>
+      <div class="row"><label for="s-vol">Volume</label><div class="ctl"><input type="range" id="s-vol" min="0" max="100" step="1"><output data-out="s-vol" data-fmt="pct"></output></div></div>
+    </div>
+  </div>
+
+  <div class="panel" data-panel="controls" hidden>
+    <div class="panel-head"><h2>Controls</h2><button class="btn" data-back>Done</button></div>
+    <div class="keys">
+      <kbd>W A S D</kbd><span>Move</span>
+      <kbd>Space</kbd><span>Jump · swim up · fly up (double-tap to toggle flight)</span>
+      <kbd>Shift</kbd><span>Sprint</span>
+      <kbd>C</kbd><span>Descend while flying or swimming</span>
+      <kbd>F</kbd><span>Toggle flight</span>
+      <kbd>Mouse</kbd><span>Look · left-click breaks · right-click places · middle-click picks</span>
+      <kbd>1–9</kbd><span>Choose a hotbar slot (or scroll)</span>
+      <kbd>E</kbd><span>Open the block palette</span>
+      <kbd>T</kbd><span>Pause or resume the day cycle</span>
+      <kbd>[ ]</kbd><span>Scrub time of day backward / forward</span>
+      <kbd>R</kbd><span>Cycle weather: natural, clear, rain</span>
+      <kbd>− =</kbd><span>Exposure compensation</span>
+      <kbd>F1</kbd><span>Hide the HUD for screenshots</span>
+      <kbd>F3</kbd><span>Performance stats</span>
+      <kbd>M</kbd><span>Mute</span>
+      <kbd>Esc</kbd><span>Pause</span>
+    </div>
+  </div>
+</div>
+
+<div id="palette" hidden>
+  <div class="panel">
+    <div class="panel-head"><h2 style="font-family: var(--display); font-weight: 400; font-size: 28px; margin: 0; letter-spacing: 0.04em;">Blocks</h2><button class="btn" id="palette-close">Close</button></div>
+    <p class="muted">Choose a block for the selected hotbar slot.</p>
+    <div id="palette-grid"></div>
+  </div>
+</div>
+<!--LC:BODY-END-->
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
