@@ -20,6 +20,6 @@ self.onmessage = (e) => {
   if (m.type === 'mesh') {
     const r = mesher.build(m.cx, m.cz, m.cols, m.tintG, m.tintF, m.lod);
     r.type = 'mesh'; r.id = m.id; r.cx = m.cx; r.cz = m.cz; r.version = m.version; r.lod = m.lod;
-    self.postMessage(r, [r.opaque, r.cutout, r.trans]);
+    self.postMessage(r, [r.opaque, r.cutout, r.trans, r.plants]);
   }
 };

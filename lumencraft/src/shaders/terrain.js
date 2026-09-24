@@ -1,5 +1,5 @@
 // Terrain vertex shader + G-buffer, shadow and translucent (water/glass) fragment shaders.
-import { HEADER, UTIL, FRAME, ATMOS_SAMPLE, SKY, SHADOW, CLOUD_FIELD, FOG, BRDF } from './common.js';
+import { HEADER, UTIL, FRAME, ATMOS_SAMPLE, CLOUD_SAMPLE, SKY, SHADOW, FOG, BRDF } from './common.js';
 
 export const terrainVS = /* glsl */`#version 300 es
 precision highp float;
@@ -78,7 +78,11 @@ void tangentFrame(int n, out vec3 N, out vec3 T, out vec3 B) {
 }
 `;
 
-export const gbufferFS = HEADER + UTIL + TANGENT + /* glsl */`
+// G-buffer variants. The opaque variant contains no `discard`, so tile-based GPUs (Apple) keep
+// hidden-surface removal and early depth rejection for the bulk of the terrain.
+export function makeGbufferFS(kind) {
+  const defs = `#define GB_OPAQUE ${kind === 'opaque' ? 1 : 0}\n#define GB_CUTOUT ${kind === 'cutout' ? 1 : 0}\n#define GB_PLANT ${kind === 'plant' ? 1 : 0}\n`;
+  return HEADER + defs + UTIL + TANGENT + /* glsl */`
 in vec3 vRel;
 in vec2 vUV;
 in vec3 vTint;
@@ -89,7 +93,7 @@ uniform vec4 uLayerInfo[64];
 uniform vec3 uCamPos;
 uniform vec3 uLightDir;
 uniform float uTime, uWetness, uRain;
-uniform float uPomDist;
+uniform float uPomDist, uTexRes;
 uniform int uPomSteps;
 uniform vec2 uPlantFade;
 uniform int uFrame;
@@ -117,14 +121,24 @@ void main() {
   int layer = vInfo.x, nIdx = vInfo.y, flags = vInfo.z;
   vec4 li = uLayerInfo[layer];
   int lf = int(li.y + 0.5);
-  vec3 N, T, B;
-  tangentFrame(nIdx, N, T, B);
+  float lf_ = float(layer);
   vec2 uv = vUV;
   vec2 dx = dFdx(uv), dy = dFdy(uv);
+  float dist = length(vRel);
+  float pshadow = 1.0;
+#if GB_PLANT
+  // dissolve small plants toward the edge of the detailed-mesh radius
+  if (dist > uPlantFade.x && ign(gl_FragCoord.xy + float(uFrame % 16) * 5.588) < smoothstep(uPlantFade.x, uPlantFade.y, dist)) discard;
+  vec3 N = vec3(0.0, 1.0, 0.0), T = vec3(1.0, 0.0, 0.0), B = vec3(0.0, 0.0, 1.0);
+#else
+  vec3 N, T, B;
+  tangentFrame(nIdx, N, T, B);
+#endif
+#if GB_OPAQUE
   // random 90 degree rotation per block on natural top faces to break up tiling
   if (nIdx == 2 && (lf & 1) != 0) {
     vec2 cell = floor(uv);
-    int k = int(hash12(cell + float(layer) * 13.1) * 4.0);
+    int k = int(hash12(cell + lf_ * 13.1) * 4.0);
     vec2 f = uv - cell;
     vec3 T0 = T, B0 = B;
     if (k == 1) { f = vec2(1.0 - f.y, f.x); T = -B0; B = T0; dx = vec2(-dx.y, dx.x); dy = vec2(-dy.y, dy.x); }
@@ -132,95 +146,95 @@ void main() {
     else if (k == 3) { f = vec2(f.y, 1.0 - f.x); T = B0; B = -T0; dx = vec2(dx.y, -dx.x); dy = vec2(dy.y, -dy.x); }
     uv = cell + f;
   }
-  vec3 V = normalize(-vRel);
-  float dist = length(vRel);
-  float lf_ = float(layer);
-  float pshadow = 1.0;
-  float pom = li.x * (1.0 - smoothstep(uPomDist * 0.6, uPomDist, dist));
-  if (pom > 0.0005 && nIdx < 6) {
+  // parallax occlusion mapping: step count follows the on-screen parallax span, sampled without anisotropy
+  float pom = li.x * (1.0 - smoothstep(uPomDist * 0.55, uPomDist, dist));
+  if (pom > 0.0005) {
+    vec3 V = -vRel / dist;
     vec3 Vts = vec3(dot(V, T), dot(V, B), dot(V, N));
-    float steps = mix(float(uPomSteps), 6.0, saturate(dist / uPomDist)) * mix(1.8, 1.0, saturate(Vts.z));
-    vec2 delta = -Vts.xy / max(Vts.z, 0.12) * pom / steps;
-    float layerD = 1.0 / steps;
-    float curH = 1.0;
-    vec2 cuv = uv;
-    float h = textureGrad(uNormal, vec3(cuv, lf_), dx, dy).a;
-    for (int i = 0; i < 64; i++) {
-      if (float(i) >= steps || h >= curH) break;
-      cuv += delta; curH -= layerD;
-      h = textureGrad(uNormal, vec3(cuv, lf_), dx, dy).a;
-    }
-    vec2 puv = cuv - delta;
-    float ph = textureGrad(uNormal, vec3(puv, lf_), dx, dy).a;
-    float after = h - curH, before = ph - (curH + layerD);
-    float w = after / min(after - before, -1e-5);
-    uv = mix(cuv, puv, saturate(w));
-    // parallax self shadowing toward the light
-    vec3 Lts = vec3(dot(uLightDir, T), dot(uLightDir, B), dot(uLightDir, N));
-    if (Lts.z > 0.02 && dist < uPomDist * 0.5) {
-      float hh = textureGrad(uNormal, vec3(uv, lf_), dx, dy).a;
-      vec2 ld = Lts.xy / max(Lts.z, 0.1) * pom / 8.0;
-      float occ = 0.0;
-      for (int i = 1; i <= 8; i++) {
-        float rayH = hh + float(i) / 8.0;
-        float sh = textureGrad(uNormal, vec3(uv + ld * float(i), lf_), dx, dy).a;
-        occ = max(occ, (sh - rayH) * 8.0);
+    float lodP = max(0.0, 0.5 * log2(max(dot(dx, dx), dot(dy, dy)) * uTexRes * uTexRes));
+    vec2 span = -Vts.xy / max(Vts.z, 0.14) * pom;
+    float spanTex = length(span) * uTexRes / exp2(lodP);
+    if (spanTex > 0.75) {
+      float steps = clamp(spanTex * 0.6, 4.0, float(uPomSteps));
+      vec2 delta = span / steps;
+      float layerD = 1.0 / steps;
+      float curH = 1.0;
+      vec2 cuv = uv;
+      float h = textureLod(uNormal, vec3(cuv, lf_), lodP).a;
+      for (int i = 0; i < 48; i++) {
+        if (float(i) >= steps || h >= curH) break;
+        cuv += delta; curH -= layerD;
+        h = textureLod(uNormal, vec3(cuv, lf_), lodP).a;
       }
-      pshadow = 1.0 - saturate(occ) * (1.0 - smoothstep(uPomDist * 0.3, uPomDist * 0.5, dist));
+      vec2 puv = cuv - delta;
+      float ph = textureLod(uNormal, vec3(puv, lf_), lodP).a;
+      float after = h - curH, before = ph - (curH + layerD);
+      uv = mix(cuv, puv, saturate(after / min(after - before, -1e-5)));
+      // parallax self shadowing toward the light
+      vec3 Lts = vec3(dot(uLightDir, T), dot(uLightDir, B), dot(uLightDir, N));
+      if (Lts.z > 0.02 && dist < uPomDist * 0.4) {
+        float hh = textureLod(uNormal, vec3(uv, lf_), lodP).a;
+        vec2 ld = Lts.xy / max(Lts.z, 0.1) * pom / 6.0;
+        float occ = 0.0;
+        for (int i = 1; i <= 6; i++) {
+          float sh = textureLod(uNormal, vec3(uv + ld * float(i), lf_), lodP).a;
+          occ = max(occ, (sh - hh - float(i) / 6.0) * 6.0);
+        }
+        pshadow = 1.0 - saturate(occ) * (1.0 - smoothstep(uPomDist * 0.25, uPomDist * 0.4, dist));
+      }
     }
   }
-  if (nIdx >= 6 && dist > uPlantFade.x) {
-    // dissolve small plants toward the edge of the detailed-mesh radius
-    if (ign(gl_FragCoord.xy + float(uFrame % 16) * 5.588) < smoothstep(uPlantFade.x, uPlantFade.y, dist)) discard;
-  }
+#endif
   vec4 alb = textureGrad(uAlbedo, vec3(uv, lf_), dx, dy);
-  bool cutout = (lf & 8) != 0;
-  if (cutout) {
-    vec2 tsz = vec2(textureSize(uAlbedo, 0).xy);
-    float lod = max(0.0, 0.5 * log2(max(dot(dx * tsz.x, dx * tsz.x), dot(dy * tsz.y, dy * tsz.y))));
-    float a = alb.a * (1.0 + lod * 0.35);
-    if (a < 0.42) discard;
+#if !GB_OPAQUE
+  {
+    float lod = max(0.0, 0.5 * log2(max(dot(dx, dx), dot(dy, dy)) * uTexRes * uTexRes));
+    if (alb.a * (1.0 + lod * 0.35) < 0.42) discard;
   }
+  float tintMask = 1.0;
+#else
   // lava flow animation
   if ((lf & 4) != 0) {
     vec2 flow = vec2(uTime * 0.03, uTime * 0.017);
     vec4 a2 = textureGrad(uAlbedo, vec3(uv * 0.7 + flow, lf_), dx, dy);
     alb.rgb = mix(alb.rgb, a2.rgb, 0.5) * (0.85 + 0.15 * sin(uTime * 1.3 + uv.x * 3.0));
   }
-  float tintMask = cutout ? 1.0 : alb.a;
+  float tintMask = alb.a;
+#endif
   vec3 albedo = alb.rgb * mix(vec3(1.0), vTint, tintMask);
-  vec3 nt = textureGrad(uNormal, vec3(uv, lf_), dx, dy).xyz * 2.0 - 1.0;
   vec4 mat = textureGrad(uMaterial, vec3(uv, lf_), dx, dy);
   float rough = mat.r, metal = mat.g, emit = mat.b * li.w, tao = mat.a;
-  vec3 Nm;
-  bool plant = nIdx >= 6;
-  if (plant) {
-    Nm = vec3(0.0, 1.0, 0.0);
-  } else {
-    Nm = normalize(T * nt.x + B * nt.y + N * nt.z);
-    if (!gl_FrontFacing) { Nm = -Nm; N = -N; }
-  }
+#if GB_PLANT
+  vec3 Nm = N;
+#else
+  vec3 nt = textureGrad(uNormal, vec3(uv, lf_), dx, dy).xyz * 2.0 - 1.0;
+  vec3 Nm = normalize(T * nt.x + B * nt.y + N * nt.z);
+  if (!gl_FrontFacing) { Nm = -Nm; N = -N; }
   // rain: wet darkening, lower roughness, puddles with ripples
-  float sky = vLight.x;
-  if (uWetness > 0.001 && !plant) {
+  if (uWetness > 0.001) {
     vec3 wp = vRel + uCamPos;
-    float exposed = smoothstep(0.8, 0.97, sky) * saturate(N.y * 0.6 + 0.6);
+    float exposed = smoothstep(0.8, 0.97, vLight.x) * saturate(N.y * 0.6 + 0.6);
     float wet = uWetness * exposed;
     float por = li.z;
     albedo *= mix(1.0, 0.5 + 0.3 * (1.0 - por), wet * por);
     rough = mix(rough, rough * 0.35, wet);
-    if (nIdx == 2) {
-      float pn = fbm2(wp.xz * 0.23) + (0.5 - textureGrad(uNormal, vec3(uv, lf_), dx, dy).a) * 0.25;
+#if GB_OPAQUE
+    if (nIdx == 2 && wet > 0.01) {
+      float pn = fbm2(wp.xz * 0.23) + (0.5 - textureLod(uNormal, vec3(uv, lf_), 2.0).a) * 0.25;
       float puddle = smoothstep(0.52, 0.6, pn) * wet * smoothstep(0.3, 0.8, uWetness);
-      rough = mix(rough, 0.015, puddle);
-      albedo *= mix(1.0, 0.75, puddle);
-      vec2 rp = ripples(wp.xz * 3.0, uTime) * uRain;
-      vec3 pn3 = normalize(vec3(rp.x * 0.35, 1.0, rp.y * 0.35));
-      Nm = normalize(mix(Nm, pn3, puddle));
-      tao = mix(tao, 1.0, puddle);
+      if (puddle > 0.001) {
+        rough = mix(rough, 0.015, puddle);
+        albedo *= mix(1.0, 0.75, puddle);
+        vec2 rp = ripples(wp.xz * 3.0, uTime) * uRain;
+        vec3 pn3 = normalize(vec3(rp.x * 0.35, 1.0, rp.y * 0.35));
+        Nm = normalize(mix(Nm, pn3, puddle));
+        tao = mix(tao, 1.0, puddle);
+      }
     }
+#endif
   }
-  int bits = (plant ? 7 : nIdx) + ((lf & 2) != 0 ? 8 : 0) + (plant ? 16 : 0) + ((flags & 4) != 0 ? 32 : 0);
+#endif
+  int bits = (GB_PLANT == 1 ? 7 : nIdx) + ((lf & 2) != 0 ? 8 : 0) + (GB_PLANT == 1 ? 16 : 0) + ((flags & 4) != 0 ? 32 : 0);
   oAlb = vec4(albedo, metal);
   oNrm = vec4(octEncode(Nm), rough, float(bits));
   float ao = pow((vLight.z * 3.0 + 1.0) / 4.0, 0.8) * tao;
@@ -228,32 +242,31 @@ void main() {
   float packed = e > 0.001 ? 0.54 + 0.46 * e : 0.48 * pshadow;
   oMisc = vec4(vLight.x, vLight.y, ao, packed);
 }`;
+}
 
-export const shadowFS = HEADER + /* glsl */`
-in vec3 vRel;
+// Depth-only shadow pass. The opaque variant has no discard and no texture fetch.
+export const shadowOpaqueFS = HEADER + /* glsl */`
+out vec4 o;
+void main() { o = vec4(1.0); }`;
+
+export const shadowCutoutFS = HEADER + /* glsl */`
 in vec2 vUV;
-in vec3 vTint;
-in vec3 vLight;
 flat in ivec4 vInfo;
 uniform sampler2DArray uAlbedo;
-uniform int uCutout;
 out vec4 o;
 void main() {
-  if (uCutout == 1) {
-    float a = texture(uAlbedo, vec3(vUV, float(vInfo.x)), 1.0).a;
-    if (a < 0.45) discard;
-  }
+  if (texture(uAlbedo, vec3(vUV, float(vInfo.x)), 1.0).a < 0.45) discard;
   o = vec4(1.0);
 }`;
 
 // Water, glass and ice. Composited over a copy of the lit opaque scene.
-export const translucentFS = HEADER + UTIL + FRAME + ATMOS_SAMPLE + SKY + SHADOW + CLOUD_FIELD + FOG + BRDF + TANGENT + /* glsl */`
+export const translucentFS = HEADER + UTIL + FRAME + ATMOS_SAMPLE + CLOUD_SAMPLE + SKY + SHADOW + FOG + BRDF + TANGENT + /* glsl */`
 in vec3 vRel;
 in vec2 vUV;
 in vec3 vTint;
 in vec3 vLight;
 flat in ivec4 vInfo;
-uniform sampler2D uSceneColor, uLinDepth, uVol, uCloudTex;
+uniform sampler2D uSceneColor, uLinDepth, uVol;
 uniform sampler2DArray uAlbedo, uNormal;
 uniform int uWaterLayer;
 uniform vec3 uCamFwd;
@@ -381,13 +394,7 @@ void main() {
       // reflection
       vec3 R = reflect(-V, n);
       R.y = abs(R.y);
-      vec3 sky = skyFull(R, false);
-      vec4 cp = uVPnj * vec4(R * 1e4, 1.0);
-      vec2 cuv = cp.xy / cp.w * 0.5 + 0.5;
-      if (cp.w > 0.0 && cuv.x > 0.0 && cuv.y > 0.0 && cuv.x < 1.0 && cuv.y < 1.0) {
-        vec4 cl = texture(uCloudTex, cuv);
-        sky = sky * cl.a + cl.rgb;
-      }
+      vec3 sky = skyWithClouds(R, false);
       vec3 refl = sky * mix(0.25, 1.0, skyVis);
       vec4 ssr = traceSSR(rel + n * 0.05, R);
       refl = mix(refl, ssr.rgb, ssr.a);
@@ -413,7 +420,7 @@ void main() {
       if (dot(rr, rr) < 1e-4) {
         col = scatterCol * 1.8;
       } else {
-        vec3 sky = skyFull(normalize(rr), true);
+        vec3 sky = skyWithClouds(normalize(rr), true);
         vec2 wuv = suv + rr.xz * 0.05;
         vec3 above = texture(uLinDepth, wuv).r > 1e4 ? sky : texture(uSceneColor, wuv).rgb;
         float F = 0.02 + 0.98 * pow(1.0 - saturate(dot(normalize(rr), -n)), 5.0);
@@ -438,7 +445,7 @@ void main() {
   vec3 tintC = mix(vec3(1.0), alb.rgb, alb.a);
   vec3 amb = irradiance(n) / PI * max(skyVis, 0.02) + vec3(1.0, 0.58, 0.3) * pow(vLight.y, 2.6) * 1.2;
   vec3 R = reflect(-V, n);
-  vec3 refl = skyFull(R, false) * mix(0.1, 1.0, skyVis);
+  vec3 refl = skyWithClouds(R, false) * mix(0.1, 1.0, skyVis);
   vec4 ssr = traceSSR(rel + n * 0.05, R);
   refl = mix(refl, ssr.rgb, ssr.a);
   float F = 0.04 + 0.96 * pow(1.0 - NoV, 5.0);

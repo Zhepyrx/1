@@ -14,7 +14,7 @@ const TEST = params.has('test');
 // ------------------------------------------------------------------ settings
 const DEFAULTS = {
   quality: 'high', dynamicRes: true, targetFps: 60, renderScale: 0.84, renderDist: 12, fov: 74, sensitivity: 1,
-  volume: 0.7, viewBob: true, dayCycle: true, dayMinutes: 24, weather: 'auto', grain: true, sharpen: 0.55,
+  volume: 0.7, viewBob: true, dayCycle: true, dayMinutes: 24, weather: 'auto', grain: true, sharpen: 0.55, motionBlur: true, gi: true,
   hotbar: HOTBAR_DEFAULT.slice(),
 };
 function loadSettings() {
@@ -83,7 +83,8 @@ async function boot() {
     fatal(`The renderer could not start on this GPU: ${e.message}`);
     return;
   }
-  renderer.scale = settings.dynamicRes ? q.scale : settings.renderScale;
+  renderer.autoScale = settings.dynamicRes;
+  renderer.scale = settings.dynamicRes ? renderer.budgetScale() : settings.renderScale;
   renderer.allocTargets(true);
   setBoot('Shaping the world', 0.6);
   audio = new Audio();
@@ -135,7 +136,6 @@ window.addEventListener('resize', resize);
 // ------------------------------------------------------------------ loop
 let last = performance.now();
 let frameCount = 0, fpsTimer = 0, fpsFrames = 0;
-let gpuQueries = [];
 let dynTimer = 0;
 let emaMs = 16;
 let readyFrames = 0;
@@ -264,29 +264,42 @@ function loop(now) {
   const flickerT = state.time;
   const flicker = 1 + 0.05 * Math.sin(flickerT * 11.3) * Math.sin(flickerT * 7.1 + 1.3) + 0.03 * Math.sin(flickerT * 23.7);
   const aurora = env.night * (0.35 + 0.65 * (0.5 + 0.5 * Math.sin(state.day * 1.7 + 0.4)));
+  const cirrus = (0.35 + 0.45 * (0.5 + 0.5 * Math.sin(state.day * 2.3 + 1.1))) * (1 - weather.rain);
 
   // --- dynamic resolution
-  pollGpuTimer();
   dynTimer += dt;
-  if (settings.dynamicRes && state.mode !== 'pause' && dynTimer > 0.6) {
+  if (settings.dynamicRes && state.mode !== 'pause' && dynTimer > 0.5 && state.mode !== 'boot') {
+    // Proportional controller: pixel cost scales with scale^2. With a GPU timer we can also
+    // spend spare headroom above the preset budget; without one, frame time is vsync-quantised,
+    // so we only probe upward occasionally.
     dynTimer = 0;
     const target = 1000 / settings.targetFps;
-    const q = renderer.q;
-    const measure = state.gpuMs > 0 ? state.gpuMs : emaMs;
-    if (measure > target * 1.05) renderer.setScale(renderer.scale - 0.06);
-    else if (measure < target * (state.gpuMs > 0 ? 0.72 : 0.8) && renderer.scale < q.scale) renderer.setScale(Math.min(q.scale, renderer.scale + 0.06));
+    const hasTimer = state.gpuMs > 0;
+    const measure = hasTimer ? state.gpuMs : emaMs;
+    const base = renderer.budgetScale();
+    // below 30 fps, allow a deeper resolution drop before giving up frame rate
+    const lo = base * (measure > 34 ? 0.45 : 0.62), hi = hasTimer ? 1 : base;
+    const ratio = target / measure;
+    let sc = renderer.scale;
+    state.probeTimer = (state.probeTimer ?? 0) + 0.5;
+    if (ratio < 0.96) sc *= Math.sqrt(Math.max(0.45, ratio * 0.92));
+    else if (hasTimer && ratio > 1.3) sc *= Math.min(1.1, Math.sqrt(ratio * 0.85));
+    else if (!hasTimer && ratio > 0.98 && state.probeTimer > 8) { sc += 0.04; state.probeTimer = 0; }
+    renderer.setScale(Math.min(hi, Math.max(lo, sc)));
   }
 
   const S = {
     cam, env, weather, time: state.time, dt, renderDist: settings.renderDist, chunks: world.renderList,
-    wind: 1 + weather.rain * 1.2, flicker, fog, underwater, aurora,
-    post: { bloom: 0.09, sharpen: settings.sharpen, vignette: 0.22, grain: settings.grain ? 0.035 : 0, saturation: 1.08, contrast: 1.0 },
+    wind: 1 + weather.rain * 1.2, flicker, fog, underwater, aurora, cirrus,
+    post: { bloom: 0.09, sharpen: settings.sharpen, vignette: 0.22, grain: settings.grain ? 0.035 : 0, saturation: 1.08, contrast: 1.0, motionBlur: settings.motionBlur && !TEST ? 0.45 : 0 },
+    gi: settings.gi ? 1.0 : 0,
     evComp: state.evComp + (underwater ? 0.3 : 0), particles, debris, selection: state.hudHidden ? null : state.selection,
     debug: +(params.get('dbg') ?? 0),
     plantFade: world.detailRadius * 32,
   };
-  beginGpuTimer();
-  try { renderer.render(S); } finally { endGpuTimer(); }
+  renderer.profiling = state.perf || params.has('profile');
+  renderer.render(S);
+  state.gpuMs = renderer.gpuMs;
   state.cpuMs += (performance.now() - frameStart - state.cpuMs) * 0.1;
 
   if (audio) {
@@ -312,36 +325,6 @@ function loop(now) {
     if (testLeft < 0) {
       if (world.stats.pending === 0 && world.uploads.length === 0) testLeft = +(params.get('frames') ?? 40);
     } else if (--testLeft <= 0 && world.stats.pending === 0 && world.uploads.length === 0) document.title = 'ready';
-  }
-}
-
-// ------------------------------------------------------------------ GPU timing
-function beginGpuTimer() {
-  const gl = renderer.gl;
-  const ext = renderer.timerExt ?? (renderer.timerExt = gl.getExtension('EXT_disjoint_timer_query_webgl2') || false);
-  if (!ext || gpuQueries.length > 4) return;
-  const q = gl.createQuery();
-  gl.beginQuery(ext.TIME_ELAPSED_EXT, q);
-  gpuQueries.push(q);
-  state.gpuActive = true;
-}
-function endGpuTimer() {
-  const ext = renderer.timerExt;
-  if (!ext || !state.gpuActive) return;
-  renderer.gl.endQuery(ext.TIME_ELAPSED_EXT);
-  state.gpuActive = false;
-}
-function pollGpuTimer() {
-  const gl = renderer.gl, ext = renderer.timerExt;
-  if (!ext) return;
-  while (gpuQueries.length) {
-    const q = gpuQueries[0];
-    if (!gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE)) break;
-    const disjoint = gl.getParameter(ext.GPU_DISJOINT_EXT);
-    const ns = gl.getQueryParameter(q, gl.QUERY_RESULT);
-    gl.deleteQuery(q);
-    gpuQueries.shift();
-    if (!disjoint) state.gpuMs = state.gpuMs ? state.gpuMs + (ns / 1e6 - state.gpuMs) * 0.1 : ns / 1e6;
   }
 }
 
@@ -671,6 +654,11 @@ function updateHUD(env) {
       `xyz ${p[0].toFixed(1)} ${p[1].toFixed(1)} ${p[2].toFixed(1)}   ${BIOME_NAMES[biome] ?? '—'}`,
       `sun ${(Math.asin(env.sunDir[1]) * 180 / Math.PI).toFixed(1)}°   moon phase ${(env.phase * 100).toFixed(0)}%   rain ${(w.rain * 100).toFixed(0)}%   wet ${(w.wetness * 100).toFixed(0)}%`,
     ];
+    const pm = Object.entries(renderer.passMs).sort((a, b) => b[1] - a[1]);
+    if (pm.length) {
+      lines.push('');
+      for (let i = 0; i < pm.length; i += 3) lines.push(pm.slice(i, i + 3).map(([k, v]) => `${k.padEnd(11)}${v.toFixed(2).padStart(6)} ms`).join('   '));
+    }
     $('perf').textContent = lines.join('\n');
   }
 }
@@ -708,6 +696,8 @@ function syncSettingsUI() {
   set('s-cycle', settings.dayCycle);
   set('s-weather', settings.weather);
   set('s-grain', settings.grain);
+  set('s-mblur', settings.motionBlur);
+  set('s-gi', settings.gi);
   set('s-sharpen', Math.round(settings.sharpen * 100));
   set('s-time', Math.round(state.hours * 4) / 4);
   $('s-scale').disabled = settings.dynamicRes;
@@ -728,7 +718,7 @@ function setQuality(qname) {
   settings.renderDist = q.renderDist;
   world.renderDist = q.renderDist;
   renderer.setQuality(q);
-  if (settings.dynamicRes) renderer.setScale(q.scale);
+  if (settings.dynamicRes) renderer.setScale(renderer.budgetScale());
   iconCache.clear();
   buildHotbar(); buildPalette();
   saveSettings();
@@ -757,7 +747,8 @@ function bindUI() {
   $('s-quality').addEventListener('change', (e) => setQuality(e.target.value));
   $('s-dynres').addEventListener('change', (e) => {
     settings.dynamicRes = e.target.checked;
-    renderer.setScale(settings.dynamicRes ? renderer.q.scale : settings.renderScale);
+    renderer.autoScale = settings.dynamicRes;
+    renderer.setScale(settings.dynamicRes ? renderer.budgetScale() : settings.renderScale);
     saveSettings(); syncSettingsUI();
   });
   $('s-target').addEventListener('change', (e) => { settings.targetFps = +e.target.value; saveSettings(); });
@@ -770,6 +761,8 @@ function bindUI() {
   $('s-cycle').addEventListener('change', (e) => { settings.dayCycle = e.target.checked; saveSettings(); });
   $('s-weather').addEventListener('change', (e) => { settings.weather = e.target.value; applyWeatherSetting(); saveSettings(); });
   $('s-grain').addEventListener('change', (e) => { settings.grain = e.target.checked; saveSettings(); });
+  $('s-mblur').addEventListener('change', (e) => { settings.motionBlur = e.target.checked; saveSettings(); });
+  $('s-gi').addEventListener('change', (e) => { settings.gi = e.target.checked; saveSettings(); });
   $('s-sharpen').addEventListener('input', (e) => { settings.sharpen = +e.target.value / 100; saveSettings(); syncSettingsUI(); });
   $('s-time').addEventListener('input', (e) => { state.hours = +e.target.value; syncSettingsUI(); });
   $('palette-close').addEventListener('click', () => closePalette());

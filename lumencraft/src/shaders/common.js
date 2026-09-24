@@ -116,9 +116,34 @@ vec3 irradiance(vec3 n) { return texture(uIrr, dirToIrrUV(n)).rgb; }
 `;
 
 // Sun, moon, stars, milky way, aurora.
+// Sky pieces sampled per pixel: sun, moon, star points, plus the baked panorama (clouds, Milky Way, aurora).
+export const CLOUD_SAMPLE = /* glsl */`
+uniform sampler2D uCloudPano;
+uniform sampler2D uSkyExtra;
+uniform sampler2D uCloudShadow;
+uniform vec4 uCSM;
+vec2 panoUV(vec3 d) {
+  float az = atan(d.z, d.x);
+  float el = asin(clamp(d.y, -1.0, 1.0));
+  return vec2(az / TAU + 0.5, 0.5 + 0.5 * sign(el) * sqrt(abs(el) / (0.5 * PI)));
+}
+vec4 cloudsAt(vec3 d) { return texture(uCloudPano, panoUV(d)); }
+vec3 skyExtraAt(vec3 d) { return texture(uSkyExtra, panoUV(d)).rgb; }
+// sunlight transmittance through the cloud layer, from a 2D map projected along the light
+float cloudShadowAt(vec3 wp) {
+  vec3 L = uLightDir;
+  float ly = max(L.y, 0.06);
+  vec2 xz = wp.xz - L.xz * ((wp.y - uCSM.w) / ly);
+  vec2 uv = (xz - uCSM.xy) / uCSM.z;
+  // beyond the map, fade to its mean (last mip) so distant fog and terrain don't switch to full sun
+  vec2 e = min(uv, 1.0 - uv);
+  float s = mix(textureLod(uCloudShadow, vec2(0.5), 9.0).r, textureLod(uCloudShadow, uv, 0.0).r, smoothstep(0.0, 0.12, min(e.x, e.y)));
+  return mix(1.0, s, smoothstep(0.0, 0.08, L.y));
+}
+`;
+
 export const SKY = /* glsl */`
 uniform mat3 uStarRot;
-uniform float uAurora;
 vec3 sunDisc(vec3 d) {
   const float r = 0.0085;
   float c = dot(d, uSunDir);
@@ -152,7 +177,7 @@ vec3 moonDisc(vec3 d) {
   vec3 T = transmittance(uCamAltKm, max(md.y, 0.0));
   return T * (alb * lit * 60.0 + 0.012) * aa * vec3(1.0, 0.97, 0.92) * step(-0.02, md.y);
 }
-vec3 stars(vec3 d) {
+vec3 starPoints(vec3 d) {
   vec3 s = uStarRot * d;
   vec3 col = vec3(0.0);
   for (int layer = 0; layer < 2; layer++) {
@@ -169,24 +194,50 @@ vec3 stars(vec3 d) {
       col += tint * b * tw * smoothstep(0.3, 0.0, dist) * 1.6;
     }
   }
-  // milky way
+  return col * 0.2;
+}
+vec3 skyFull(vec3 d, bool withDiscs) {
+  vec3 c = skyLUT(d);
+  if (withDiscs) {
+    float night = uNight;
+    if (night > 0.0 && d.y > 0.0) {
+      vec3 T = transmittance(uCamAltKm, max(d.y, 0.02));
+      c += (starPoints(d) + skyExtraAt(d)) * night * T;
+    }
+    c += sunDisc(d) + moonDisc(d) * night;
+  }
+  return c;
+}
+// sky with the cloud panorama composited in front
+vec3 skyWithClouds(vec3 d, bool withDiscs) {
+  vec3 c = skyFull(d, withDiscs);
+  vec4 cl = cloudsAt(d);
+  return c * cl.a + cl.rgb;
+}
+`;
+
+// Baked into the sky panorama: Milky Way and aurora (smooth, so a low update rate is invisible).
+export const SKY_EXTRAS = /* glsl */`
+uniform mat3 uStarRot;
+uniform float uAurora;
+vec3 milkyWay(vec3 d) {
+  vec3 s = uStarRot * d;
   vec3 mwN = normalize(vec3(0.3, 0.55, -0.78));
   float bd = dot(s, mwN);
   float band = exp(-bd * bd * 22.0);
+  if (band < 0.002) return vec3(0.0);
   float detail = fbm3(s * 7.0);
   float dust = smoothstep(0.45, 0.7, fbm3(s * 16.0 + 3.0)) * exp(-bd * bd * 90.0);
   vec3 mw = mix(vec3(0.45, 0.5, 0.75), vec3(0.8, 0.7, 0.6), detail) * band * (0.3 + 0.9 * detail) * (1.0 - 0.75 * dust);
   float coreDir = pow(max(dot(s, normalize(vec3(0.8, 0.2, 0.55))), 0.0), 6.0);
-  mw *= 1.0 + 2.5 * coreDir;
-  return (col + mw * 0.028) * 0.2;
+  return mw * (1.0 + 2.5 * coreDir) * 0.0056;
 }
-vec3 aurora(vec3 d) {
-  if (d.y < 0.02 || uAurora <= 0.001) return vec3(0.0);
+vec3 aurora(vec3 d, float jit) {
+  if (d.y < 0.05 || uAurora <= 0.001) return vec3(0.0);
   vec3 acc = vec3(0.0);
   float t = uTime * 0.05;
-  float jit = hash12(gl_FragCoord.xy) * 0.06;
-  for (int i = 0; i < 18; i++) {
-    float fi = (float(i) + jit) / 18.0;
+  for (int i = 0; i < 28; i++) {
+    float fi = (float(i) + jit) / 28.0;
     float h = 1.0 + fi * 1.4;
     vec2 p = d.xz / (d.y + 0.08) * h;
     float w = fbm2(p * 0.35 + vec2(t, -t * 0.7)) * 3.0;
@@ -198,19 +249,7 @@ vec3 aurora(vec3 d) {
     acc += col * curtain * mask * fade;
   }
   float north = smoothstep(-0.4, 0.6, -d.z);
-  return acc * 0.12 * uAurora * smoothstep(0.1, 0.42, d.y) * north;
-}
-vec3 skyFull(vec3 d, bool withDiscs) {
-  vec3 c = skyLUT(d);
-  if (withDiscs) {
-    float night = uNight;
-    if (night > 0.0) {
-      vec3 T = transmittance(uCamAltKm, max(d.y, 0.02));
-      c += (stars(d) + aurora(d)) * night * T * step(0.0, d.y);
-    }
-    c += sunDisc(d) + moonDisc(d) * night;
-  }
-  return c;
+  return acc * 0.077 * uAurora * smoothstep(0.1, 0.42, d.y) * north;
 }
 `;
 
@@ -225,6 +264,8 @@ uniform vec4 uCascadeDepth;
 uniform vec4 uCascadeSize;
 uniform float uShadowRes;
 uniform float uLightAngle;
+uniform int uPcssCascades;
+uniform vec4 uCascadeLayer;
 int cascadeFor(float z, float dither) {
   for (int c = 0; c < 4; c++) { if (z < uCascadeFar[c] * (1.0 - 0.12 * dither)) return c; }
   return 4;
@@ -239,10 +280,10 @@ float shadowSample(vec3 rel, vec3 N, float NoL, float viewZ, float noise, bool p
   if (s.x < 0.0 || s.y < 0.0 || s.x > 1.0 || s.y > 1.0 || s.z > 1.0) return 1.0;
   float z = s.z - 0.08 / uCascadeDepth[c];
   float phi = noise * TAU;
-  float fc = float(c);
+  float fc = uCascadeLayer[c];
   float raw = texture(uShadowRaw, vec3(s.xy, fc)).r;
   thick = max(z - raw, 0.0) * uCascadeDepth[c];
-  if (!pcss) {
+  if (!pcss || c >= uPcssCascades) {
     float sum = 0.0;
     float r = 1.5 / uShadowRes;
     for (int i = 0; i < 4; i++) sum += texture(uShadow, vec4(s.xy + vogel(i, 4, phi) * r, fc, z));
@@ -267,7 +308,7 @@ float shadowFast(vec3 rel, float dist) {
   if (c > 3) return 1.0;
   vec3 s = (uShadowMat[c] * vec4(rel, 1.0)).xyz * 0.5 + 0.5;
   if (s.x < 0.0 || s.y < 0.0 || s.x > 1.0 || s.y > 1.0 || s.z > 1.0) return 1.0;
-  return texture(uShadow, vec4(s.xy, float(c), s.z - 0.25 / uCascadeDepth[c]));
+  return texture(uShadow, vec4(s.xy, uCascadeLayer[c], s.z - 0.25 / uCascadeDepth[c]));
 }
 `;
 
@@ -280,7 +321,7 @@ uniform float uCloudBottom, uCloudTop, uCloudCoverage, uCloudDensity;
 uniform vec3 uWindOffset;
 float cloudField(vec3 p, float hf, bool detail) {
   vec3 wp = p + uWindOffset;
-  vec4 w = texture(uWeather, wp.xz / 24000.0);
+  vec4 w = textureLod(uWeather, wp.xz / 24000.0, 0.0);
   float cov = saturate(w.r * 1.15 + (uCloudCoverage - 0.5) * 1.3);
   float type = w.g;
   float prof = smoothstep(0.0, 0.08 + 0.1 * type, hf) * (1.0 - smoothstep(mix(0.35, 0.7, type), 1.0, hf));
@@ -297,22 +338,15 @@ float cloudField(vec3 p, float hf, bool detail) {
   }
   return max(d, 0.0) * uCloudDensity;
 }
-float cloudShadowAt(vec3 wp) {
-  float mid = mix(uCloudBottom, uCloudTop, 0.35);
-  vec3 L = uLightDir;
-  vec3 p = wp + L * ((mid - wp.y) / max(L.y, 0.08));
-  float d = cloudField(p, 0.35, false);
-  float t = 0.22 + 0.78 * exp(-d * 7.0);
-  return mix(1.0, t, smoothstep(0.0, 0.08, L.y));
-}
 `;
 
 // Exponential height fog / valley mist.
 export const FOG = /* glsl */`
+uniform sampler3D uFogNoise;
 float fogDensity(vec3 wp) {
   float h = wp.y;
   float d = uHaze * exp(-max(h - 60.0, 0.0) / 140.0);
-  float mistN = 0.55 + 0.45 * vnoise3(vec3(wp.xz * 0.018, uTime * 0.02) + vec3(uTime * 0.01, 0.0, 0.0));
+  float mistN = 0.5 + 0.5 * texture(uFogNoise, vec3(wp.xz * 0.012 + vec2(uTime * 0.004, 0.0), wp.y * 0.02 + uTime * 0.003)).r;
   d += uMist * exp(-max(h - uMistY, 0.0) / 9.0) * mistN;
   d += uRain * 0.004;
   return d;

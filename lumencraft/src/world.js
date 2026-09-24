@@ -169,19 +169,20 @@ export class World {
         opaque: this.pool.upload(m.opaque, m.nOpaque),
         cutout: this.pool.upload(m.cutout, m.nCutout),
         trans: this.pool.upload(m.trans, m.nTrans),
+        plants: this.pool.upload(m.plants, m.nPlants),
       };
       col.minY = m.minY; col.maxY = m.maxY;
       col.meshVersion = m.version;
       col.meshLod = m.lod;
       this.renderList.push(col);
       this.stats.meshed++;
-      budget -= m.nOpaque + m.nCutout + m.nTrans + 2000;
+      budget -= m.nOpaque + m.nCutout + m.nTrans + m.nPlants + 2000;
     }
   }
 
   releaseMesh(col) {
     const m = col.mesh;
-    this.pool.release(m.opaque); this.pool.release(m.cutout); this.pool.release(m.trans);
+    this.pool.release(m.opaque); this.pool.release(m.cutout); this.pool.release(m.trans); this.pool.release(m.plants);
     col.mesh = null;
     const i = this.renderList.indexOf(col);
     if (i >= 0) this.renderList.splice(i, 1);

@@ -40,7 +40,7 @@ npm run build        # writes Lumencraft.html
 | `R` | Weather: natural → clear → rain |
 | `-` `=` | Exposure compensation |
 | `F1` | Hide the HUD |
-| `F3` | Performance overlay (fps, GPU time, internal resolution, draw calls) |
+| `F3` | Performance overlay (fps, GPU time, internal resolution, draw calls, the most expensive passes) |
 | `M` | Mute |
 | `Esc` | Pause menu and settings |
 
@@ -50,16 +50,27 @@ Each frame runs this pipeline (`src/renderer.js`):
 
 1. **Atmosphere** – Hillaire-style physically based sky: transmittance and multiple-scattering LUTs, a sky-view LUT
    rebuilt every frame for the current sun and moon, and a sky irradiance map used for ambient light.
-2. **Cascaded shadow maps** – four texel-snapped cascades (distant ones update every 2nd/4th frame) sampled with
-   PCSS, so shadows harden near contact points and soften with distance from the caster.
-3. **G-buffer** – chunk meshes from one shared vertex arena drawn with `WEBGL_multi_draw` (one draw call per page).
-   Materials use parallax occlusion mapping with self-shadowing, per-block texture rotation to hide tiling, wind
-   animation for leaves and plants, and rain wetness with puddles and ripples.
-4. **GTAO** ambient occlusion at half resolution with a depth-aware blur.
-5. **Volumetric clouds** – raymarched Perlin-Worley clouds over a curved-earth layer with multiple-scattering
-   approximation and silver lining, temporally reprojected. They also cast moving shadows on the terrain.
-6. **Volumetric light** – shadowed height fog and morning valley mist (god rays), a separate absorption model
-   underwater.
+2. **Volumetric clouds** – Perlin-Worley cumulus over a curved-earth layer plus a high cirrus deck, with
+   four-octave multiple scattering, powder and silver lining. Clouds are infinitely far away compared with the
+   camera's movement, so they are raymarched into a sky panorama instead of per pixel: each frame refreshes one
+   pixel in 16 (a Bayer pattern), so the whole sky is refreshed every 16 frames. Rays march coarsely
+   through empty air and switch to fine steps inside a cloud. The Milky Way and aurora are baked into the same pass.
+   A separate top-down cloud shadow map lets the terrain, the fog and the water look up cloud cover with one
+   texture read.
+3. **Cascaded shadow maps** – four texel-snapped cascades. The distant ones are double-buffered and re-rendered a
+   slice at a time across 2 or 4 frames, so they never tear. The near cascades use PCSS, so shadows harden near
+   contact points and soften with distance from the caster.
+4. **G-buffer** – chunk meshes from one shared vertex arena drawn with `WEBGL_multi_draw` (one draw call per page),
+   front to back. Opaque blocks, alpha-tested leaves and dissolving plants are separate meshes and shaders. The
+   opaque shader never uses `discard`, which keeps hidden-surface removal working on tile-based GPUs (Apple, mobile).
+   Materials use parallax occlusion mapping with self-shadowing, with the step count scaled to the on-screen depth
+   span; per-block texture rotation to hide tiling; wind animation for leaves and plants; and rain wetness with
+   puddles and ripples.
+5. **GTAO and bounce light** – horizon-based ambient occlusion at half resolution. The same horizon search
+   collects one bounce of indirect light from the previous frame's lit image, so light accumulates multiple
+   bounces over time (sunlit grass tints the trunk above it, torchlight fills a cave). A depth-aware blur follows.
+6. **Volumetric light** – shadowed height fog and morning valley mist, with god rays from both terrain and cloud
+   shadows. A separate absorption model applies underwater.
 7. **Deferred lighting** – GGX specular, foliage translucency, underwater caustics, warm torch light,
    screen-space reflections, emissive blocks, aerial perspective.
 8. **Water and glass** – refraction, Beer–Lambert absorption, SSR with cloud-aware sky fallback, sun glints, shore
@@ -67,15 +78,20 @@ Each frame runs this pipeline (`src/renderer.js`):
 9. **Particles** – rain streaks and splashes, snow, fireflies, sunlit pollen, falling cherry petals, block debris.
 10. **Temporal upscaling** – jittered rendering at a lower internal resolution reconstructed to full resolution
     with a Catmull-Rom history, variance clipping and depth-dilated reprojection.
-11. **Post** – auto-exposure with night-aware metering, energy-conserving bloom, contrast-adaptive sharpening,
-    a log-domain filmic tone curve, scotopic (night vision) blue shift, vignette and grain.
+11. **Post** – auto-exposure with night-aware metering, energy-conserving bloom, camera motion blur,
+    contrast-adaptive sharpening, a log-domain filmic tone curve, scotopic (night vision) blue shift, vignette
+    and grain.
 
 ### Frame rate
 
-Dynamic resolution (on by default) measures GPU time with timer queries and moves the internal render scale
-between 50% and the preset's maximum to hold your target frame rate; the temporal upscaler rebuilds detail at
-full output resolution. Quality presets (Low → Ultra) set shadow resolution, cloud and fog step counts, parallax
-steps, texture resolution (128 or 256 px per block) and view distance.
+Each quality preset renders a fixed number of internal pixels (Ultra 2.4 MP, High 1.8 MP, Medium 1.3 MP,
+Low 0.9 MP) whatever the display density. The temporal upscaler rebuilds full output resolution from the jittered
+history. A 5K Retina window therefore costs the same to shade as a 1080p one.
+
+Dynamic resolution (on by default) adjusts that scale to hold your target frame rate. It uses GPU timer queries
+where the browser provides them and frame times where it doesn't (Safari). Presets also set shadow resolution,
+cloud panorama size and step counts, fog steps, parallax steps, texture resolution (128 or 256 px per block) and
+view distance. Bounce light and motion blur can be turned off in Settings → Graphics.
 
 Distant chunks use a lighter mesh without pitch-dark cave interiors, hidden inner leaf faces and small plants.
 Grass and flowers dissolve out before that boundary, so the switch isn't visible.

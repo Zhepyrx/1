@@ -38,7 +38,8 @@ export class Mesher {
     this.sky = new Uint8Array(this.cap);
     this.blk = new Uint8Array(this.cap);
     this.queue = new Int32Array(1 << 21);
-    this.bufs = [new VBuf(1 << 16), new VBuf(1 << 16), new VBuf(1 << 14)];
+    // 0 opaque, 1 alpha-tested cubes (leaves), 2 translucent, 3 small plants
+    this.bufs = [new VBuf(1 << 16), new VBuf(1 << 15), new VBuf(1 << 14), new VBuf(1 << 15)];
     this.maskA = new Int32Array(CS * 258);
     this.maskB = new Int32Array(CS * 258);
   }
@@ -358,7 +359,7 @@ export class Mesher {
           ao1[0] = ao1[1] = ao1[2] = ao1[3] = 3;
           const tint = tintFor(b, lx, lz);
           const layer = TEX_SIDE[b];
-          const buf = bufs[1];
+          const buf = rb === R.CROSS || rb === R.CARPET ? bufs[3] : bufs[0];
           const ox = wx * 16, oy = y * 16, oz = wz * 16;
           if (rb === R.CROSS) {
             const hr = hash3(wx, y, wz, 77);
@@ -405,8 +406,8 @@ export class Mesher {
     }
 
     return {
-      opaque: bufs[0].take(), cutout: bufs[1].take(), trans: bufs[2].take(),
-      nOpaque: bufs[0].n >> 2, nCutout: bufs[1].n >> 2, nTrans: bufs[2].n >> 2,
+      opaque: bufs[0].take(), cutout: bufs[1].take(), trans: bufs[2].take(), plants: bufs[3].take(),
+      nOpaque: bufs[0].n >> 2, nCutout: bufs[1].n >> 2, nTrans: bufs[2].n >> 2, nPlants: bufs[3].n >> 2,
       minY: minY === 9999 ? 0 : minY / 16, maxY: maxY < 0 ? 0 : maxY / 16,
     };
   }

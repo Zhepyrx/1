@@ -1,5 +1,5 @@
 // Screen-space passes: AO, volumetric fog, deferred lighting, temporal upscaling, exposure, bloom, composite.
-import { HEADER, UTIL, FRAME, ATMOS_SAMPLE, SKY, SHADOW, CLOUD_FIELD, FOG, BRDF } from './common.js';
+import { HEADER, UTIL, FRAME, ATMOS_SAMPLE, CLOUD_SAMPLE, SKY, SHADOW, FOG, BRDF } from './common.js';
 
 const FACE_N = /* glsl */`
 vec3 faceNormal(int n) {
@@ -10,17 +10,21 @@ vec3 faceNormal(int n) {
 }
 `;
 
+// Ground-truth AO plus near-field indirect light: occluders found during the horizon search
+// contribute their previous-frame radiance (reprojected), giving one bounce of colour bleeding
+// that accumulates into multiple bounces over frames.
 export const aoFS = HEADER + UTIL + FACE_N + /* glsl */`
-uniform sampler2D uDepth, uG1;
+uniform sampler2D uDepth, uG1, uPrevColor;
 uniform vec2 uAORes;
-uniform mat4 uInvProj, uProj, uViewRot;
+uniform mat4 uInvProj, uProj, uViewRot, uInvViewRot, uPrevVP;
 uniform int uFrame;
+uniform float uGI;
 out vec4 o;
 vec3 viewPos(vec2 uv, float d) { vec4 p = uInvProj * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0); return p.xyz / p.w; }
 void main() {
   vec2 uv = gl_FragCoord.xy / uAORes;
   float d = texture(uDepth, uv).r;
-  if (d >= 1.0) { o = vec4(1.0); return; }
+  if (d >= 1.0) { o = vec4(0.0, 0.0, 0.0, 1.0); return; }
   vec3 P = viewPos(uv, d);
   vec4 g1 = texture(uG1, uv);
   int bits = int(g1.w + 0.5);
@@ -30,12 +34,14 @@ void main() {
   const float radius = 1.1;
   float projScale = uProj[1][1] * 0.5 * uAORes.y;
   float rPix = radius * projScale / -P.z;
-  if (rPix < 1.5) { o = vec4(1.0); return; }
+  if (rPix < 1.5) { o = vec4(0.0, 0.0, 0.0, 1.0); return; }
   rPix = min(rPix, 110.0);
   float noise = ign(gl_FragCoord.xy + float(uFrame % 64) * 5.588238);
   float noise2 = fract(noise * 9.137 + 0.37);
   const int SLICES = 2, STEPS = 6;
   float vis = 0.0;
+  vec3 giSum = vec3(0.0);
+  float giW = 0.0;
   for (int s = 0; s < SLICES; s++) {
     float phi = (float(s) + noise) / float(SLICES) * PI;
     vec2 omega = vec2(cos(phi), sin(phi));
@@ -62,6 +68,17 @@ void main() {
         float fall = saturate(1.0 - len * len / (radius * radius * 2.5));
         c = mix(-1.0, c, fall);
         if (side == 0) hc0 = max(hc0, c); else hc1 = max(hc1, c);
+        // occluder above the tangent plane: gather its light from the previous frame
+        float up = dot(D, N) / max(len, 1e-4);
+        if (uGI > 0.0 && (j & 1) == 1 && up > 0.15 && fall > 0.0) {
+          vec4 pc = uPrevVP * vec4(mat3(uInvViewRot) * S, 1.0);
+          vec2 puv = pc.xy / pc.w * 0.5 + 0.5;
+          if (pc.w > 0.0 && puv.x > 0.0 && puv.y > 0.0 && puv.x < 1.0 && puv.y < 1.0) {
+            float w = up * fall;
+            giSum += min(texture(uPrevColor, puv).rgb, vec3(24.0)) * w;
+            giW += w;
+          }
+        }
       }
     }
     float h0 = -acos(clamp(hc1, -1.0, 1.0));
@@ -73,7 +90,9 @@ void main() {
     vis += projNLen * (iarc0 + iarc1);
   }
   vis /= float(SLICES);
-  o = vec4(pow(saturate(vis), 1.25));
+  vis = pow(saturate(vis), 1.25);
+  vec3 gi = giW > 0.0 ? giSum / giW * (1.0 - vis) * uGI : vec3(0.0);
+  o = vec4(gi, vis);
 }`;
 
 export const aoBlurFS = HEADER + UTIL + /* glsl */`
@@ -86,17 +105,18 @@ void main() {
   vec2 uv = gl_FragCoord.xy / uAORes;
   vec2 t = 1.0 / uAORes;
   float zc = lin(texture(uDepth, uv).r);
-  float sum = 0.0, ws = 0.0;
+  vec4 sum = vec4(0.0);
+  float ws = 0.0;
   for (int y = -2; y <= 1; y++) for (int x = -2; x <= 1; x++) {
     vec2 s = uv + (vec2(float(x), float(y)) + 0.5) * t;
     float z = lin(texture(uDepth, s).r);
     float w = exp(-abs(z - zc) / (zc * 0.04 + 0.05));
-    sum += texture(uAO, s).r * w; ws += w;
+    sum += texture(uAO, s) * w; ws += w;
   }
-  o = vec4(sum / max(ws, 1e-4));
+  o = sum / max(ws, 1e-4);
 }`;
 
-export const volFS = HEADER + UTIL + FRAME + ATMOS_SAMPLE + SHADOW + CLOUD_FIELD + FOG + /* glsl */`
+export const volFS = HEADER + UTIL + FRAME + ATMOS_SAMPLE + CLOUD_SAMPLE + SHADOW + FOG + /* glsl */`
 uniform sampler2D uDepth;
 uniform vec2 uVolRes;
 uniform float uVolMax;
@@ -160,8 +180,9 @@ void main() {
   o = vec4(acc, T);
 }`;
 
-export const lightingFS = HEADER + UTIL + FRAME + ATMOS_SAMPLE + SKY + SHADOW + CLOUD_FIELD + FOG + BRDF + FACE_N + /* glsl */`
-uniform sampler2D uG0, uG1, uG2, uDepth, uAO, uVol, uCloudTex, uHistory;
+export const lightingFS = HEADER + UTIL + FRAME + ATMOS_SAMPLE + CLOUD_SAMPLE + SKY + SHADOW + FOG + BRDF + FACE_N + /* glsl */`
+uniform sampler2D uG0, uG1, uG2, uDepth, uAO, uVol, uHistory;
+uniform float uCloudBottom;
 uniform vec2 uOutRes;
 uniform float uSSR, uSSRSteps, uVolMax, uFlicker, uHasHistory;
 uniform int uDebug;
@@ -241,9 +262,13 @@ vec3 surfaceAtmo(vec3 col, vec3 rel, vec3 rd, float dist, vec2 uv) {
   col = mix(hz, col, Ta);
   float edge = smoothstep(uRenderDist * 0.72, uRenderDist * 0.97, length(rel.xz));
   if (edge > 0.0) {
-    vec3 s = skyLUT(normalize(vec3(rd.x, max(rd.y, 0.0), rd.z)));
-    vec4 cl = texture(uCloudTex, uv);
-    s = s * cl.a + cl.rgb;
+    // fade into exactly what a sky pixel in this direction shows (stars, moon, clouds, haze), so distant
+    // hills dissolve without a ghost outline
+    bool below = rd.y < 0.0 && uCamPos.y < uCloudBottom;
+    vec3 hd = below ? normalize(vec3(rd.x, 0.0, rd.z)) : rd;
+    vec3 s = below ? skyLUT(hd) : skyFull(rd, true);
+    vec4 cl = cloudsAt(hd);
+    s = (s * cl.a + cl.rgb) * v.a + v.rgb;
     col = mix(col, s, edge);
   }
   return col;
@@ -256,8 +281,8 @@ void main() {
   vec3 rd = viewRay(uv);
   if (d >= 1.0) {
     // below the horizon there is no terrain left: show the same haze that distant terrain fades into
-    vec3 c = rd.y < 0.0 ? skyLUT(normalize(vec3(rd.x, 0.0, rd.z))) : skyFull(rd, true);
-    vec4 cl = texture(uCloudTex, uv);
+    vec3 c = rd.y < 0.0 && uCamPos.y < uCloudBottom ? skyLUT(normalize(vec3(rd.x, 0.0, rd.z))) : skyFull(rd, true);
+    vec4 cl = cloudsAt(rd.y < 0.0 && uCamPos.y < uCloudBottom ? normalize(vec3(rd.x, 0.0, rd.z)) : rd);
     c = c * cl.a + cl.rgb;
     vec4 v = texture(uVol, uv);
     c = c * v.a + v.rgb;
@@ -282,7 +307,8 @@ void main() {
   float skyL = g2.r, blkL = g2.g, vao = g2.b, packed = g2.a;
   float emissive = packed > 0.51 ? saturate((packed - 0.54) / 0.46) * 16.0 : 0.0;
   float pshadow = packed > 0.51 ? 1.0 : saturate(packed / 0.48);
-  float ssao = texture(uAO, uv).r;
+  vec4 aoGI = texture(uAO, uv);
+  float ssao = aoGI.a;
   float ao = vao * ssao;
   vec3 wp = rel + uCamPos;
   float noise = frameNoise(gl_FragCoord.xy);
@@ -327,6 +353,7 @@ void main() {
   vec3 blockE = vec3(1.0, 0.54, 0.24) * bl * uFlicker;
   ambient += diffC / PI * blockE * mix(ao, 1.0, 0.3);
   ambient += diffC * 0.0005 * ao;
+  ambient += diffC * aoGI.rgb * vao;
   if (wetSurf) ambient *= exp(-WATER_SA * wdepth * 1.3);
   vec2 ab = envBRDF(NoV, rough);
   vec3 specC = F0 * ab.x + ab.y;
@@ -341,7 +368,7 @@ void main() {
   float specOcc = saturate(pow(NoV + ao, exp2(-16.0 * rough - 1.0)) - 1.0 + ao);
   vec3 col = direct + ambient + env * specC * specOcc + albedo * emissive;
   if (uCamPos.y > uCloudBottom) {
-    vec4 cl = texture(uCloudTex, uv);
+    vec4 cl = cloudsAt(rd);
     col = col * cl.a + cl.rgb;
   }
   vec3 pre = col;
@@ -513,7 +540,9 @@ void main() {
 }`;
 
 export const compositeFS = HEADER + UTIL + /* glsl */`
-uniform sampler2D uSrc, uBloom, uExposure;
+uniform sampler2D uSrc, uBloom, uExposure, uDepth;
+uniform mat4 uInvVP, uPrevVP;
+uniform float uMotionBlur;
 uniform vec2 uOutRes;
 uniform float uBloomStr, uSharpen, uVignette, uGrain, uTime, uUnderwater, uSaturation, uContrast, uPurkinje;
 uniform int uFrame;
@@ -540,6 +569,24 @@ void main() {
     uv += w;
   }
   vec3 c = fetch(px);
+  // camera motion blur along the reprojected screen velocity (static world)
+  if (uMotionBlur > 0.0) {
+    float d = texture(uDepth, uv).r;
+    vec4 wp = uInvVP * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+    vec4 pc = uPrevVP * vec4(wp.xyz / wp.w, 1.0);
+    vec2 vel = (uv - (pc.xy / pc.w * 0.5 + 0.5)) * uMotionBlur;
+    float vpx = length(vel * uOutRes);
+    if (pc.w > 0.0 && vpx > 1.5) {
+      vel *= min(1.0, 36.0 / vpx);
+      vec3 acc = vec3(0.0);
+      float jit = ign(gl_FragCoord.xy + float(uFrame % 8) * 3.1) - 0.5;
+      for (int k = 0; k < 8; k++) {
+        vec2 suv = uv + vel * ((float(k) + 0.5 + jit) / 8.0 - 0.5);
+        acc += texture(uSrc, suv).rgb;
+      }
+      c = acc / 8.0;
+    }
+  }
   // contrast-adaptive sharpening in a perceptual domain
   vec3 n = fetch(px + ivec2(0, 1)), s = fetch(px - ivec2(0, 1)), e = fetch(px + ivec2(1, 0)), w = fetch(px - ivec2(1, 0));
   vec3 pc = c / (1.0 + c), pn = n / (1.0 + n), ps = s / (1.0 + s), pe = e / (1.0 + e), pw = w / (1.0 + w);
